@@ -1,0 +1,6 @@
+README.md
+setup.py
+motor_interfaces.egg-info/PKG-INFO
+motor_interfaces.egg-info/SOURCES.txt
+motor_interfaces.egg-info/dependency_links.txt
+motor_interfaces.egg-info/top_level.txt
