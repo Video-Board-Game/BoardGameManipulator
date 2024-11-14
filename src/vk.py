@@ -1,5 +1,6 @@
 import numpy as np
 
+#Generated VK ported from MATLAB
 def arm2vk(q1, q2, q3):
     q1 = float(q1)
     q2 = float(q2)

@@ -1,15 +1,19 @@
 import numpy as np
 
+#Generated FK ported from MATLAB
 def arm2fk(q1, q2, q3):
     """
     Compute the forward kinematics for the given joint angles q1, q2, and q3.
     """
-    t2 = np.cos(float(q1))
-    t3 = np.cos(float(q2))
-    t4 = np.cos(float(q3))
-    t5 = np.sin(float(q1))
-    t6 = np.sin(float(q2))
-    t7 = np.sin(float(q3))
+    q1 = float(q1)
+    q2 = float(q2)
+    q3 = float(q3)
+    t2 = np.cos(q1)
+    t3 = np.cos(q2)
+    t4 = np.cos(q3)
+    t5 = np.sin(q1)
+    t6 = np.sin(q2)
+    t7 = np.sin(q3)
     t8 = t3 * 2.0825e-1
     t9 = t4 * 3.8825e-1
     t10 = t8 - 2.0825e-1
