@@ -1,6 +1,9 @@
 import numpy as np
 
 def arm2vk(q1, q2, q3):
+    q1 = float(q1)
+    q2 = float(q2)
+    q3 = float(q3)
     t2 = np.cos(q1)
     t3 = np.cos(q2)
     t4 = np.cos(q3)
