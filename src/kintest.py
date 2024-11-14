@@ -28,7 +28,7 @@ for n in range(200000):
     goal_angs=np.append(goal_angs,angs)
     theta0_d = np.arctan2(pos[0],-pos[2])*1.25
     theta2_d = -np.arctan2(pos[0],-pos[2])/2
-    theta1_d = np.arcsin(pos[1]/(.18+.18*np.sin(theta2_d))) * np.sign(theta0_d)
+    theta1_d = np.arcsin(pos[1]/(.18+.18*np.cos(theta2_d))) * np.sign(theta0_d)
     educated_guess_angs=np.append(educated_guess_angs,[theta0_d,theta1_d,theta2_d])
     educated_guess_pos=np.append(educated_guess_pos,fk.arm2fk(theta0_d,theta1_d,theta2_d)[0:3,3])
     educated_guess_error=np.append(educated_guess_error,np.linalg.norm(pos-educated_guess_pos[n*3:(n+1)*3]))
