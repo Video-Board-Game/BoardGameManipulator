@@ -27,21 +27,13 @@ def arm2ik(x,y,z):
     # Define the learning rate
     alpha = 1
 
-    #Compute the current position of the end effector
-    x_c, y_c, z_c = fk.arm2fk(theta0_d, theta1_d, theta2_d)[0:3, 3]
+    # #Compute the current position of the end effector
+    # x_c, y_c, z_c = fk.arm2fk(theta0_d, theta1_d, theta2_d)[0:3, 3]
 
-    # Compute the error
-    e = np.array([x_d - x_c, y_d - y_c, z_d - z_c])
+    # # Compute the error
+    # e = np.array([x_d - x_c, y_d - y_c, z_d - z_c])
 
     for i in range(N):
-        # Compute the Jacobian
-        J = vk.arm2vk(theta0_d, theta1_d, theta2_d)
-        J = np.linalg.pinv(J)
-        # Update the joint angles
-        theta0_d += (alpha * J[0, :].dot(e))
-        theta1_d += (alpha * J[1, :].dot(e))
-        theta2_d += (alpha * J[2, :].dot(e))
-
         # Compute the current position of the end effector
         x_c, y_c, z_c = fk.arm2fk(theta0_d, theta1_d, theta2_d)[0:3, 3]
 
@@ -50,5 +42,15 @@ def arm2ik(x,y,z):
 
         if(np.linalg.norm(e) < 0.0001):
             break
+
+        # Compute the Jacobian
+        J = vk.arm2vk(theta0_d, theta1_d, theta2_d)
+        J = np.linalg.inv(J)
+        # Update the joint angles
+        theta0_d += (alpha * J[0, :].dot(e))
+        theta1_d += (alpha * J[1, :].dot(e))
+        theta2_d += (alpha * J[2, :].dot(e))
+
+        
 
     return theta0_d, theta1_d, theta2_d, i
