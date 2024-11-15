@@ -28,4 +28,51 @@ def arm2fk(q1, q2, q3):
 
     return T.T
 
+# Define the DH table for the three joints
+# each row corresponds to a joint, in the format of: [theta, d, a, alpha]
+#   theta: the angle about the previous z-axis
+#   d: the distance along the previous z-axis
+#   a: the distance along the x-axis to the next joint
+#   alpha: the angle about the x-axis to the next joint
+# in meters and radians
+dh_table_const = [
+    [0, 0, 0.170, -np.pi/2],
+    [0, 0, 0.180, +np.pi/2],
+    [0, 0, 0.180, -np.pi/2]
+]
+
+base_joint_offset_dh = [0, -0.03825, 0, +np.pi/2]
+
+# function to turn a single row of the DH table into a transformation matrix
+def dh2mat(theta, d, a, alpha):
+    return np.array([
+        [np.cos(theta), -np.sin(theta)*np.cos(alpha), np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
+        [np.sin(theta), np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
+        [0, np.sin(alpha), np.cos(alpha), d],
+        [0, 0, 0, 1]
+    ])
+    
+# function to compute the forward kinematics of the robot
+def fk_arbitrary(q_arr, dh_table=dh_table_const, base_joint_offset=base_joint_offset_dh):
+    '''
+    Compute the forward kinematics of the robot given the joint angles q1, q2, and q3.
+    Values are in radians.
+    Designed only for rotational joints.
+    '''
+    
+    # verify the input
+    if len(q_arr) != len(dh_table):
+        raise ValueError("The number of joint angles must match the number of joints in the DH table.")
+    
+    # compute the transformation matrices for each joint
+    T_matrices = []
+    for i in range(len(q_arr)):
+        T_matrices.append(dh2mat(q_arr[i] + dh_table[i][0], dh_table[i][1], dh_table[i][2], dh_table[i][3]))
+    
+    # compute the transformation matrix for the end effector
+    T = dh2mat(base_joint_offset[0], base_joint_offset[1], base_joint_offset[2], base_joint_offset[3])
+    for T_i in T_matrices:
+        T = T @ T_i
+        
+    return T
 
