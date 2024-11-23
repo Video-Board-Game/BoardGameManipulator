@@ -1,13 +1,18 @@
 # conversion_factors.py
 from enum import Enum, auto
-from robot_interfaces.abstract_motor import Mode
-from robot_interfaces.units import *
+from units import *
 from importlib import resources as impresources
 
 from enum import Enum, auto
 import math
 from datetime import datetime 
 import time
+
+class Mode(Enum):
+    CURRENT = auto()
+    VELOCITY = auto()
+    POSITION = auto()
+    TRAJECTORY = auto()
 
 # Enumeration for different communication protocols, probably for interfacing with devices.
 class Protocol(Enum):

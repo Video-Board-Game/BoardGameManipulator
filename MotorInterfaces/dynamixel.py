@@ -1,9 +1,10 @@
-from robot_interfaces.util import *
-from robot_interfaces.abstract_motor import Motor, ValueOutOfRangeError
 from . import dynamixel_variables as dv
 import os
 import time
-from robot_interfaces.units import *
+from enum import Enum, auto
+import math
+from datetime import datetime
+from units import *
 
 if os.name == 'nt':
     import msvcrt
@@ -20,6 +21,16 @@ else:
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         return ch
+
+      
+class ValueOutOfRangeError(Exception):
+    def __init__(self, value, min_val, max_val, range_name: Enum):
+        self.value = value
+        self.min_val = round(min_val, 4)
+        self.max_val = round(max_val, 4)
+        self.range_name = range_name
+        super().__init__(f"Value {value} is out of range for {range_name.name}. Range: [{self.min_val}, {self.max_val}]")
+
 
 from dynamixel_sdk import * # Uses Dynamixel SDK library
 
@@ -59,12 +70,12 @@ class Dynamixel():
         # Initialize PortHandler instance
         # Set the port path
         # Get methods and members of PortHandlerLinux or PortHandlerWindows
-        self.port_handler = PortHandler(self.port)
+        self.port_handler = dv.PortHandler(self.port)
 
         # Initialize PacketHandler instance
         # Set the protocol version
         # Get methods and members of Protocol1PacketHandler or Protocol2PacketHandler
-        self.packet_handler = PacketHandler(self.protocol_version)
+        self.packet_handler = dv.PacketHandler(self.protocol_version)
 
         # Open port
         if self.port_handler.openPort():
@@ -452,21 +463,9 @@ class Dynamixel():
     def print(self, depth = 0):
         prefix = "\t" * depth
         print(f"{prefix}Dynamixel: {self.name} (Model: {self.get_model()}) (ID: {self.get_id()})")
-        
-class ValueOutOfRangeError(Exception):
-    def __init__(self, value, min_val, max_val, range_name : Enum):
-        self.value = value
-        self.min_val = round(min_val, 4)
-        self.max_val = round(max_val, 4)
-        self.range_name = range_name
-        super().__init__(f"Value {value} is out of range for {range_name.name}. Range: [{self.min_val}, {self.max_val}]")
+  
 
-try:
-    from robot_factory.class_dict import class_dict
-    class_dict["Dynamixel"] = Dynamixel
-except:
-    pass
-
+# Very simple test
 if __name__  == '__main__':
     bus = '/dev/ttyACM0'
     motor = Dynamixel(3, bus)
