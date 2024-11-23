@@ -70,12 +70,12 @@ class Dynamixel():
         # Initialize PortHandler instance
         # Set the port path
         # Get methods and members of PortHandlerLinux or PortHandlerWindows
-        self.port_handler = dv.PortHandler(self.port)
+        self.port_handler = PortHandler(self.port)
 
         # Initialize PacketHandler instance
         # Set the protocol version
         # Get methods and members of Protocol1PacketHandler or Protocol2PacketHandler
-        self.packet_handler = dv.PacketHandler(self.protocol_version)
+        self.packet_handler = PacketHandler(self.protocol_version)
 
         # Open port
         if self.port_handler.openPort():
