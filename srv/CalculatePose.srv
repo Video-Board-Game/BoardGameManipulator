@@ -1,0 +1,4 @@
+geometry_msgs/Pose input_pose
+float64[] joint_angles
+---
+geometry_msgs/Pose output_pose
