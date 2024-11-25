@@ -1,4 +1,4 @@
-from . import dynamixel_variables as dv
+import dynamixel_variables as dv
 import os
 import time
 from enum import Enum, auto
@@ -40,6 +40,7 @@ class Dynamixel():
         self.name = name
         self.id = id
         self.units = units
+        self.port=port
         ### Address and Model Specific Info
         self.mv = dv
         ### Protoccol Specific
@@ -52,8 +53,8 @@ class Dynamixel():
         ### Store Model Number
         self.model = self.mv.Model.DEFAULT
         self.model = self.get_model()
-        self._log_bounds()
-        self.off()
+        # self._log_bounds()
+        # self.off()
         
     def _tick_range_check(self, read, address_enum):
         ###

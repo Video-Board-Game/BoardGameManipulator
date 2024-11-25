@@ -1,5 +1,5 @@
-from motor_interfaces.dynamixel import Dynamixel
-from motor_interfaces.dynamixel_variables import *
+from dynamixel import Dynamixel
+from dynamixel_variables import *
 from typing import Type
 import sys
 import time
@@ -14,7 +14,7 @@ print("unsigned :   ", unsigned)
 print("signed :     ", signed)
 
 bus = '/dev/ttyACM0'
-motor = Dynamixel(1, bus, baudrate=1000000)
+motor = Dynamixel(12, bus, baudrate=1000000)
 
 def signal_handler(sig, frame):
     motor.set_goal_velocity(0)

@@ -510,6 +510,7 @@ class Model(Enum):
     XH430_V210_R = 1050
     XH540_V270_R = 1140
     XH540_V150_R = 1150
+    XL430_W250_T = 1060
 
 motor_override = {
     ### To add motors you have to log the differences between the new motor and the XH540_V150_R
