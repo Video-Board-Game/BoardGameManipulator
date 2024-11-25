@@ -1,10 +1,10 @@
-import dynamixel_variables as dv
+from . import dynamixel_variables as dv
 import os
 import time
 from enum import Enum, auto
 import math
 from datetime import datetime
-from units import *
+from .units import *
 
 if os.name == 'nt':
     import msvcrt
@@ -56,6 +56,10 @@ class Dynamixel():
         # self._log_bounds()
         # self.off()
         
+    def _log_bounds(self):
+        self.velocity_limit = self.get_velocity_limit()
+        self.current_limit = self.get_current_limit()
+
     def _tick_range_check(self, read, address_enum):
         ###
         range_readable = self.mv.get_range_ticks(self.model, address_enum)
@@ -313,8 +317,15 @@ class Dynamixel():
     def get_enable(self):
         return bool(self._read_address(self.mv.Address.TORQUE_ENABLE))
     
+    def off(self):
+        self.set_enable(False)
+
+    def on(self):
+        self.set_enable(True)
+
     def set_enable(self, state):
         self._write_address(self.mv.Address.TORQUE_ENABLE, float(state))
+        self.set_LED(state)    
      
     def get_LED(self):
         return bool(self._read_address(self.mv.Address.LED))
@@ -460,7 +471,7 @@ class Dynamixel():
 
     def get_power_draw(self):
         return (self.get_input_voltage() * self.get_current())
-    
+
     def print(self, depth = 0):
         prefix = "\t" * depth
         print(f"{prefix}Dynamixel: {self.name} (Model: {self.get_model()}) (ID: {self.get_id()})")

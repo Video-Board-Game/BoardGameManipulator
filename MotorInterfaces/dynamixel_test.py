@@ -30,14 +30,15 @@ print("Operating :  ", motor.get_mode())
 
 motor.off()
 print("Enable :     ", motor.get_enable())
-motor.set_mode(Mode.CURRENT)
+motor.set_mode(Mode.POSITION)
 motor.on()
 
 print("Max Vel :    ", motor.get_velocity_limit())
-motor.set_velocity_limit(15)
+motor.set_profile_max_velocity(10)
+motor.set_profile_acceleration(50)
 
 print("Max Vel :    ", motor.get_velocity_limit())
-motor.set_goal_velocity(1)
+motor.set_goal_position(0)
 
 init_time = time.time()
 timeout = 10 # seconds
@@ -46,25 +47,27 @@ while time.time() < init_time + timeout:
     print()
     print("Cur Vel:    ", motor.get_velocity())
     print("Goal Vel:   ", motor.get_goal_velocity())
-    print("Position:   ", motor.get_position())
+    print("Goal Position:   ", motor.get_goal_position())
     print("Current:    ",motor.get_current())
     print("Enable:     ",motor.get_enable())
     print("Temp:       ", motor.get_temperature())
     print("Position:   ", motor.get_position())
     print()
 
-motor.reset()
+signal_handler(0,0)
 
-init_time = time.time()
-timeout = 10 # seconds
-while time.time() < init_time + timeout:
-    time.sleep(1)
-    print()
-    print("Cur Vel:    ", motor.get_velocity())
-    print("Goal Vel:   ", motor.get_goal_velocity())
-    print("Position:   ", motor.get_position())
-    print("Current:    ",motor.get_current())
-    print("Enable:     ",motor.get_enable())
-    print("Temp:       ", motor.get_temperature())
-    print("Position:   ", motor.get_position())
-    print()
+# motor.reset()
+
+# init_time = time.time()
+# timeout = 1 # seconds
+# while time.time() < init_time + timeout:
+#     time.sleep(1)
+#     print()
+#     print("Cur Vel:    ", motor.get_velocity())
+#     print("Goal Vel:   ", motor.get_goal_velocity())
+#     print("Position:   ", motor.get_position())
+#     print("Current:    ",motor.get_current())
+#     print("Enable:     ",motor.get_enable())
+#     print("Temp:       ", motor.get_temperature())
+#     print("Position:   ", motor.get_position())
+#     print()

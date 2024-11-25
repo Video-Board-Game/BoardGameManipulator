@@ -1,1 +1,2 @@
 dynamixel_sdk
+numpy

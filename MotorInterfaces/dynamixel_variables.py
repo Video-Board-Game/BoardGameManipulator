@@ -1,6 +1,6 @@
 # conversion_factors.py
 from enum import Enum, auto
-from units import *
+from .units import *
 from importlib import resources as impresources
 
 from enum import Enum, auto
@@ -599,7 +599,18 @@ motor_override = {
         },
     },
     Model.XH540_V270_R:{},
-    Model.XH540_V150_R:{}
+    Model.XH540_V150_R:{},
+    Model.XL430_W250_T: {
+        # The XL430_W250_T does not have a current sensor
+        # This address for the XL430 is the 'Present_Load'
+        # Which is the % torque of the maximum being applied.
+        # Units are 0.1% per LSB, but are being kept in terms of current
+        # as to not break consistency with all other dynamixels.
+        Address.PRESENT_CURRENT:{ 
+            Data.RANGE: [-1000,1000],
+            Data.UNIT : Unit_Current.MILLIAMP
+        },
+    }
 }
 
 def get_unit(address: Address):
