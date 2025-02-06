@@ -36,12 +36,13 @@ def arm2fk(q1, q2, q3):
 #   alpha: the angle about the x-axis to the next joint
 # in meters and radians
 dh_table_const = [
-    [0, 0, 0.170, -np.pi/2],
-    [0, 0, 0.180, +np.pi/2],
-    [0, 0, 0.180, -np.pi/2]
+    [0, -0.08375, 0, np.pi/2],
+    [-np.pi/2+np.arctan(17/237.46), 0, np.hypot(237.46,17), 0],
+    [np.pi/2, 0, 0.262, 0]
 ]
 
-base_joint_offset_dh = [0, -0.03825, 0, +np.pi/2]
+
+
 
 # function to turn a single row of the DH table into a transformation matrix
 def dh2mat(theta, d, a, alpha):
@@ -53,7 +54,7 @@ def dh2mat(theta, d, a, alpha):
     ])
     
 # function to compute the forward kinematics of the robot
-def fk_arbitrary(q_arr, dh_table=dh_table_const, base_joint_offset=base_joint_offset_dh):
+def fk_arm1(q_arr, dh_table=dh_table_const):
     '''
     Compute the forward kinematics of the robot given the joint angles q1, q2, and q3.
     Values are in radians.
@@ -69,8 +70,7 @@ def fk_arbitrary(q_arr, dh_table=dh_table_const, base_joint_offset=base_joint_of
     for i in range(len(q_arr)):
         T_matrices.append(dh2mat(q_arr[i] + dh_table[i][0], dh_table[i][1], dh_table[i][2], dh_table[i][3]))
     
-    # compute the transformation matrix for the end effector
-    T = dh2mat(base_joint_offset[0], base_joint_offset[1], base_joint_offset[2], base_joint_offset[3])
+    # compute the total transformation matrix
     for T_i in T_matrices:
         T = T @ T_i
         

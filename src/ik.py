@@ -54,3 +54,27 @@ def arm2ik(x,y,z):
         
 
     return theta0_d, theta1_d, theta2_d, i
+
+def arm1ik(x,y,z):
+    l1 = 0.08375
+    offset12 = 4.77
+    lx= 237.46
+    lz=17
+    l2 = 0.23811
+    l3 = 0.261
+
+    theta1_d = np.arctan2(y,x)
+    r = np.sqrt(x**2+y**2)
+
+    z_d = z - l1
+
+    theta3_C = np.arccos((r**2+z_d**2-l2**2-l3**2)/(2*l2*l3))
+    theta3_S = np.sqrt(1-theta3_C**2)
+
+    theta3_p = np.arctan2(theta3_S,theta3_C)
+    theta3_n = np.arctan2(-theta3_S,theta3_C)
+
+    
+
+
+
