@@ -16,8 +16,8 @@ PROTOCOL_VERSION = 2.0  # Check your Dynamixel model's protocol version
 
 # Default setting
               # Dynamixel ID (Change based on your setup)
-BAUDRATE = 10000         # Dynamixel baudrate
-DEVICENAME = '/dev/ttyACM1'  # Port (Update according to your system)
+BAUDRATE = 1000000         # Dynamixel baudrate
+DEVICENAME = 'COM5'  # Port (Update according to your system)
 
 TORQUE_ENABLE = 1        # Enable torque
 TORQUE_DISABLE = 0       # Disable torque
