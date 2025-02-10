@@ -40,6 +40,9 @@ DXL_ZERO_POSITION = 2048        # Zero position value
 DXL_CONVERTION_FACTOR = 651.898646904 # Convertion factor from radians to encoder units
 DXL_MOVING_STATUS_THRESHOLD = 20  # Threshold for position error
 
+GRIPPER_OPEN = 1024
+GRIPPER_CLOSE = 3072
+
 class DynamixelArm:
     def __init__(self, port, baudrate):
         self.port_handler = dxl.PortHandler(port)
@@ -115,6 +118,12 @@ class DynamixelArm:
 
         self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.motor_ids,[time_ms, time_ms, time_ms])
         self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.motor_ids, [acc_time_ms, acc_time_ms, acc_time_ms])
+
+    def write_gripper(self, position):
+        self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.gripper_ids, [position])
+    
+    def get_gripper_position(self):
+        return self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.gripper_ids)[0]
 
     def close(self):
         self.port_handler.closePort()
