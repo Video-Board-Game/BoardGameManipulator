@@ -4,7 +4,7 @@ import numpy as np
 class ArmKinematics:
     def __init__(self):
         self.L1 = 0.08375
-        self.L2 = np.hypot(.023746,.017)
+        self.L2 = np.hypot(.23746,.017)
         self.L3 = 0.3125
         self.jointOffset=np.arctan(17/237.46)
         self.jointLims = [
@@ -42,7 +42,7 @@ class ArmKinematics:
         return T
     
     def ik(self,x,y,z):
-        z=-z
+        
 
         joint0 = np.zeros(2)
         r=np.sqrt(x**2+y**2)
@@ -52,24 +52,23 @@ class ArmKinematics:
         joint0[0]=np.arctan2(c1,d0)
         joint0[1]=np.arctan2(-c1,d0)
 
-        zc = z-self.L1
+        zc = z+self.L1
         
         r2 = r**2+zc**2
 
         joint2 = np.zeros(2)
-        d2 = (self.L2+self.L3**2-r2)/(2*self.L2*self.L3)
+        d2 = (self.L2**2+self.L3**2-r2)/(2*self.L2*self.L3)
         c2 = np.sqrt(1-d2**2)
         joint2[0]=np.pi/2+self.jointOffset-np.arctan2(c2,d2)
         joint2[1]=np.pi/2+self.jointOffset-np.arctan2(-c2,d2)
 
         dbeta = (self.L2**2+r2-self.L3**2)/(2*self.L2*np.sqrt(r2))
-        cbeta = np.sqrt(1-dbeta**2)
-        
+        cbeta = np.sqrt(1-dbeta**2)       
         beta=np.zeros(2)
         beta[0]=np.arctan2(cbeta,dbeta)
         beta[1]=np.arctan2(-cbeta,dbeta)
 
-        dalpha = r/np.sqrt(r2)
+        dalpha = -zc/np.sqrt(r2)
         calpha = np.sqrt(1-dalpha**2)
         alpha=np.zeros(2)
         alpha[0]=np.arctan2(calpha,dalpha)
@@ -80,6 +79,7 @@ class ArmKinematics:
         joint1[1]=alpha[0]-self.jointOffset-beta[1]
         joint1[2]=alpha[1]-self.jointOffset-beta[0]
         joint1[3]=alpha[1]-self.jointOffset-beta[1]
+
 
         validAnswer= False
         validJoints = np.zeros(3)
@@ -93,12 +93,16 @@ class ArmKinematics:
                             valid=False
                             break
                     fkpos=self.fk(joints)
-                    if valid and not (fkpos[0,3]-x)**2+(fkpos[1,3]-y)**2+(fkpos[2,3]-z)**2<0.01:
+                    if valid and not ((fkpos[0,3]-x)**2+(fkpos[1,3]-y)**2+(fkpos[2,3]-z)**2<0.01):
                         valid = False
                     if valid:
                         validAnswer=True
                         validJoints=joints
                         break
+                if validAnswer:
+                    break
+            if validAnswer:
+                break
                 
         return validJoints if validAnswer else None
 
@@ -106,4 +110,11 @@ class ArmKinematics:
     def vk(self,joint_val):
         pass
 
+if __name__ == "__main__":
+    arm = ArmKinematics()
+    t = arm.fk([np.pi/6,-np.pi/6,np.pi/6])
+    print(t)
+    joints = arm.ik(t[0][3],t[1][3],t[2][3])
+    print(joints)
     
+   
