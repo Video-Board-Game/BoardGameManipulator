@@ -19,7 +19,7 @@ setup(
     license='Apache-2.0',
     entry_points={
         'console_scripts': [
-        	'arm = publisher_member_function:ArmNode',
+        	'arm_node = terrawarden_mansplain.RosArm:main',
         ],
     },
 )

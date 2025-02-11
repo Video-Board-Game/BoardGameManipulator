@@ -37,8 +37,9 @@ class ArmKinematics:
     
     def fk(self,joints):
         T = np.eye(4)
-        for i in range(3):
-            T = T @ self.dh2mat(joints[i],self.dh_table_const[i])
+        T = T @ self.dh2mat(-joints[0],self.dh_table_const[0])
+        T = T @ self.dh2mat(joints[1],self.dh_table_const[1])
+        T = T @ self.dh2mat(joints[2],self.dh_table_const[2])
         return T
     
     def ik(self,x,y,z):
@@ -109,6 +110,44 @@ class ArmKinematics:
 
     def vk(self,joint_val):
         pass
+
+    def generate_trajectory(self,start,goal,time):
+        xcoefs = self.quintic_trajectory_coeffs(start[0], 0, 0, goal[0], 0, 0, time)
+        ycoefs = self.quintic_trajectory_coeffs(start[1], 0, 0, goal[1], 0, 0, time)
+        zcoefs = self.quintic_trajectory_coeffs(start[2], 0, 0, goal[2], 0, 0, time)
+        return xcoefs,ycoefs,zcoefs
+
+    def quintic_trajectory_coeffs(self,p0, v0, a0, pf, vf, af, T):
+        """
+        Computes the coefficients of a quintic polynomial trajectory.
+        
+        Parameters:
+            p0, v0, a0 : float
+                Initial position, velocity, and acceleration
+            pf, vf, af : float
+                Final position, velocity, and acceleration
+            T : float
+                Total trajectory time
+            
+        Returns:
+            np.ndarray : Coefficients [a0, a1, a2, a3, a4, a5]
+        """
+        # Construct the matrix and the right-hand side vector
+        A = np.array([
+            [1, 0, 0,    0,    0,     0],
+            [0, 1, 0,    0,    0,     0],
+            [0, 0, 2,    0,    0,     0],
+            [1, T, T**2, T**3, T**4,  T**5],
+            [0, 1, 2*T,  3*T**2, 4*T**3, 5*T**4],
+            [0, 0, 2,    6*T,  12*T**2, 20*T**3]
+        ])
+        
+        b = np.array([p0, v0, a0, pf, vf, af])
+        
+        # Solve for coefficients
+        coeffs = np.linalg.solve(A, b)
+        return coeffs
+
 
 if __name__ == "__main__":
     arm = ArmKinematics()

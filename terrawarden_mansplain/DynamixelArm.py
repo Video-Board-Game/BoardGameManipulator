@@ -27,7 +27,7 @@ PROTOCOL_VERSION = 2.0  # Check your Dynamixel model's protocol version
 # Default setting
 # Dynamixel ID (Change based on your setup)
 BAUDRATE = 1000000         # Dynamixel baudrate
-DEVICENAME = 'COM5'  # Port (Update according to your system)
+DEVICENAME = '/dev/ttyACM0'  # Port (Update according to your system)
 
 TORQUE_ENABLE = 1        # Enable torque
 TORQUE_DISABLE = 0       # Disable torque
@@ -44,15 +44,15 @@ GRIPPER_OPEN = 1024
 GRIPPER_CLOSE = 3072
 
 class DynamixelArm:
-    def __init__(self, port, baudrate):
-        self.port_handler = dxl.PortHandler(port)
+    def __init__(self):
+        self.port_handler = dxl.PortHandler(DEVICENAME)
         self.packet_handler = dxl.PacketHandler(2.0)
         self.group_bulk_read = dxl.GroupBulkRead(self.port_handler, self.packet_handler)
         self.group_bulk_write = dxl.GroupBulkWrite(self.port_handler, self.packet_handler)
 
         if not self.port_handler.openPort():
             raise Exception("Failed to open the port")
-        if not self.port_handler.setBaudRate(baudrate):
+        if not self.port_handler.setBaudRate(BAUDRATE):
             raise Exception("Failed to set the baudrate")
 
         self.motor_ids = [10, 11, 12]
@@ -69,6 +69,11 @@ class DynamixelArm:
            
             if length == 4:
                 dxl_present_position, dxl_comm_result, dxl_error = self.packet_handler.read4ByteTxRx(self.port_handler, id, address)
+                
+                if address == ADDR_MX_PRESENT_POSITION:
+                    dxl_present_position = dxl_present_position - DXL_ZERO_POSITION
+
+                dxl_present_position = dxl_present_position / DXL_CONVERTION_FACTOR
             else:
                 dxl_present_position, dxl_comm_result, dxl_error = self.packet_handler.read1ByteTxRx(self.port_handler, id, address)
             
@@ -122,25 +127,21 @@ class DynamixelArm:
     def write_gripper(self, position):
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.gripper_ids, [position])
     
-    def get_gripper_position(self):
+    def read_gripper_position(self):
         return self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.gripper_ids)[0]
 
     def close(self):
         self.port_handler.closePort()
 
 if __name__ == "__main__":
-    arm = DynamixelArm(DEVICENAME, BAUDRATE)
+    arm = DynamixelArm()
     arm.set_torque(TORQUE_ENABLE)
     time.sleep(.5)
-    positions = [np.pi/6, -np.pi/6, np.pi/6]  # Example positions
-    arm.write_time(2)
-    arm.write_joints(positions)
-    
+    arm.write_joints([0,0,0])
     print("Current Positions:", arm.read_position())
     print("Current Velocities:", arm.read_velocity())
 
     time.sleep(2)
-    arm.write_joints([0, 0, 0])  # Move to zero position
     time.sleep(.5)
     # arm.set_torque(TORQUE_DISABLE)
     arm.close()
