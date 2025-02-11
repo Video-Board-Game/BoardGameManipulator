@@ -5,7 +5,7 @@ from std_msgs.msg import Float64MultiArray
 from DynamixelArm import DynamixelArm  # Import the DynamixelArm class
 from ArmKinematics import ArmKinematics  # Import the ArmKinematics class
 from geometry_msgs.msg import PoseStamped
-from msg import ArmStatus
+from terrawarden_interfaces.msg import ArmStatus
 
 class ArmNode(Node):
     def __init__(self):
