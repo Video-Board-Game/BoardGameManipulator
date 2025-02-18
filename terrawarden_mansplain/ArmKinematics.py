@@ -17,7 +17,7 @@ class ArmKinematics:
         self.dh_table_const = [
             [0, -self.L1, 0, np.pi/2],
             [-np.pi/2+self.jointOffset, 0, self.L2, 0],
-            [np.pi/2-self.jointOffset, 0, self.L3, 0]
+            [np.pi/2-self.jointOffset, 0, self.L3, -np.pi/2]
         ]
 
         
@@ -37,9 +37,8 @@ class ArmKinematics:
     
     def fk(self,joints):
         T = np.eye(4)
-        T = T @ self.dh2mat(-joints[0],self.dh_table_const[0])
-        T = T @ self.dh2mat(joints[1],self.dh_table_const[1])
-        T = T @ self.dh2mat(joints[2],self.dh_table_const[2])
+        for i in range(3):
+            T = T @ self.dh2mat(joints[i],self.dh_table_const[i])
         return T
     
     def ik(self,x,y,z):
@@ -109,51 +108,63 @@ class ArmKinematics:
 
 
     def vk(self,joint_val):
-        pass
-
-    def generate_trajectory(self,start,goal,time):
-        xcoefs = self.quintic_trajectory_coeffs(start[0], 0, 0, goal[0], 0, 0, time)
-        ycoefs = self.quintic_trajectory_coeffs(start[1], 0, 0, goal[1], 0, 0, time)
-        zcoefs = self.quintic_trajectory_coeffs(start[2], 0, 0, goal[2], 0, 0, time)
-        return xcoefs,ycoefs,zcoefs
-
-    def quintic_trajectory_coeffs(self,p0, v0, a0, pf, vf, af, T):
-        """
-        Computes the coefficients of a quintic polynomial trajectory.
+        l2=self.L2
+        l3=self.L3
+        theta1=joint_val[0]
+        theta2=joint_val[1]
+        theta3=joint_val[2]
+        t2 = np.cos(theta1)
+        t3 = np.sin(theta1)
+        t4 = np.pi / 2.0
+        t5 = -t4
+        t7 = t4 + theta3 - 7.146907175572792e-2
+        t6 = t5 + theta2 + 7.146907175572792e-2
+        t9 = np.cos(t7)
+        t11 = np.sin(t7)
+        t8 = np.cos(t6)
+        t10 = np.sin(t6)
+        t12 = t8 * t11
+        t13 = t9 * t10
+        t14 = l3 * t8 * t9
+        t15 = l3 * t10 * t11
+        t16 = t2 * t8 * t9
+        t17 = t3 * t8 * t9
+        t18 = t2 * t10 * t11
+        t19 = t3 * t10 * t11
+        t20 = -t12
+        t21 = -t13
+        t22 = l3 * t2 * t12
+        t23 = l3 * t2 * t13
+        t24 = l3 * t3 * t12
+        t25 = l3 * t3 * t13
+        t26 = -t15
+        t27 = -t16
+        t28 = -t17
+        t29 = l3 * t2 * t20
+        t30 = l3 * t2 * t21
+        t31 = l3 * t3 * t20
+        t32 = l3 * t3 * t21
+        t33 = t20 + t21
+        t34 = t18 + t27
+        t35 = t19 + t28
         
-        Parameters:
-            p0, v0, a0 : float
-                Initial position, velocity, and acceleration
-            pf, vf, af : float
-                Final position, velocity, and acceleration
-            T : float
-                Total trajectory time
-            
-        Returns:
-            np.ndarray : Coefficients [a0, a1, a2, a3, a4, a5]
-        """
-        # Construct the matrix and the right-hand side vector
-        A = np.array([
-            [1, 0, 0,    0,    0,     0],
-            [0, 1, 0,    0,    0,     0],
-            [0, 0, 2,    0,    0,     0],
-            [1, T, T**2, T**3, T**4,  T**5],
-            [0, 1, 2*T,  3*T**2, 4*T**3, 5*T**4],
-            [0, 0, 2,    6*T,  12*T**2, 20*T**3]
+        jac = np.array([
+            [-t3 * t14 + t3 * t15 - l2 * t3 * t8, t2 * t14 + t2 * t26 + l2 * t2 * t8, 0.0],
+            [t3 * t12 + t3 * t13, t2 * t20 + t2 * t21, 0.0],
+            [t29 + t30 - l2 * t2 * t10, t31 + t32 - l2 * t3 * t10, t14 + t26 + l2 * t8],
+            [t34, t35, t33],
+            [t29 + t30, t31 + t32, t14 + t26],
+            [t34, t35, t33]
         ])
         
-        b = np.array([p0, v0, a0, pf, vf, af])
-        
-        # Solve for coefficients
-        coeffs = np.linalg.solve(A, b)
-        return coeffs
-
+        return jac
 
 if __name__ == "__main__":
     arm = ArmKinematics()
-    t = arm.fk([np.pi/6,-np.pi/6,np.pi/6])
+    t = arm.fk([0,0,0])
     print(t)
-    joints = arm.ik(t[0][3],t[1][3],t[2][3])
-    print(joints)
-    
+    t = arm.fk([np.pi/2,np.pi/2,np.pi/2])
+    print(t)
+    v=arm.vk([0,0,0])
+    print(v)
    
