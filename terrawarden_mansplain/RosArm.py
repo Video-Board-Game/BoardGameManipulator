@@ -57,10 +57,11 @@ class ArmNode(Node):
 
     def runTrajectory(self, goalx,goaly,goalz,duration):
         print(goalx,goaly,goalz)
+        self.arm.write_time(0.1)
         startTime=self.get_clock().now().nanoseconds*1e-6
         currentT=self.kinematics.fk(self.arm.read_position())
-        print(self.arm.read_position())
-        print(currentT)
+        print("Current Joints: ", self.arm.read_position())
+        print("Current T: ", currentT)
         currentPose=[currentT[0][3],currentT[1][3],currentT[2][3]]
         coefficients=self.kinematics.generate_trajectory(currentPose,[goalx,goaly,goalz],duration)
         while(self.get_clock().now().nanoseconds*1e-6-startTime<duration):
@@ -74,9 +75,10 @@ class ArmNode(Node):
                 z+=coefficients[2][i]*t**i
             
             joints = self.kinematics.ik(x,y,z)
-            print(x,y,z)
-            print(joints)
-            self.arm.write_joints(joints)
+            print("XYZ: ",x,y,z)
+            print("Joints: ",joints)
+            if joints:
+                self.arm.write_joints(joints)
         
     
 
@@ -85,10 +87,20 @@ class ArmNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ArmNode()
-    zeropos=node.kinematics.fk([0,0,0])
+    node.arm.write_time(0.5)
+    rclpy.spin_once(node, timeout_sec=0.5)
+    print(node.arm.read_position())
+    for i in range(10):
+        node.arm.write_time(2)
+        funpos = node.kinematics.fk([np.pi/3,-np.pi/3,np.pi/3]) 
+        node.runTrajectory(funpos[0][3],funpos[1][3],funpos[2][3],2000)
+        rclpy.spin_once(node, timeout_sec=.5)
+        
+        zeropos=node.kinematics.fk([0,0,0])
 
-    node.runTrajectory(zeropos[0][3],zeropos[1][3],zeropos[2][3],2000)
-    rclpy.spin(node)
+        node.runTrajectory(zeropos[0][3],zeropos[1][3],zeropos[2][3],2000)
+        rclpy.spin_once(node, timeout_sec=.5)
+    # rclpy.spin(node)
     
 
 if __name__ == '__main__':

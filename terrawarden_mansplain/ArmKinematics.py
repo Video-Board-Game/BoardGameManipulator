@@ -47,10 +47,9 @@ class ArmKinematics:
         joint0 = np.zeros(2)
         r=np.sqrt(x**2+y**2)
 
-        d0 = x/r
-        c1 = np.sqrt(1-d0**2)
-        joint0[0]=np.arctan2(c1,d0)
-        joint0[1]=np.arctan2(-c1,d0)
+        
+        joint0[0]=np.arctan2(y,x)
+        joint0[1]=np.arctan2(-y,-x)
 
         zc = z+self.L1
         
@@ -103,7 +102,12 @@ class ArmKinematics:
                     break
             if validAnswer:
                 break
-                
+        if not validAnswer:
+            print("No valid IK solution found")
+            print("x,y,z: ",x,y,z)
+            print("joint0: ",joint0)
+            print("joint1: ",joint1)
+            print("joint2: ",joint2)
         return validJoints if validAnswer else None
 
 
@@ -158,6 +162,27 @@ class ArmKinematics:
         ])
         
         return jac
+    
+    def generate_trajectory(self, start, end, duration):
+        coeffs = np.zeros((3,6))
+        def quintic_traj(start_angle, end_angle, start_vel, end_vel, start_acc, end_acc, start_time, end_time):
+            answer_vec = np.array([start_angle, start_vel, start_acc, end_angle, end_vel, end_acc])
+            polynomial_mat = np.array([
+                [1, start_time, start_time**2, start_time**3, start_time**4, start_time**5],
+                [0, 1, 2*start_time, 3*start_time**2, 4*start_time**3, 5*start_time**4],
+                [0, 0, 2, 6*start_time, 12*start_time**2, 20*start_time**3],
+                [1, end_time, end_time**2, end_time**3, end_time**4, end_time**5],
+                [0, 1, 2*end_time, 3*end_time**2, 4*end_time**3, 5*end_time**4],
+                [0, 0, 2, 6*end_time, 12*end_time**2, 20*end_time**3]
+            ])
+            coeffs = np.linalg.solve(polynomial_mat, answer_vec)
+            return coeffs
+        for i,s,e in zip([0,1,2],start,end):
+            if s==e:
+                coeffs[i] = np.zeros(6)
+            else:
+                coeffs[i] = quintic_traj(s,e,0,0,0,0,0,duration)
+        return coeffs
 
 if __name__ == "__main__":
     arm = ArmKinematics()

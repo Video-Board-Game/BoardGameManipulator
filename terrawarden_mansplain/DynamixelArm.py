@@ -107,14 +107,21 @@ class DynamixelArm:
         self.bulk_write(ADDR_MX_TORQUE_ENABLE, LEN_MX_TORQUE_ENABLE, self.motor_ids, [enable, enable, enable])
     
     def write_joints(self, positions):
-        positions = [int(position*DXL_CONVERTION_FACTOR+DXL_ZERO_POSITION) for position in positions]
+        positions = [int(position*factor*DXL_CONVERTION_FACTOR+DXL_ZERO_POSITION) for position, factor in zip(positions,[1,-1,-1])]
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.motor_ids, positions)
     
     def read_position(self):
-        return self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.motor_ids)
+        pos = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.motor_ids)  
+        
+        pos = [p * factor for p, factor in zip(pos, [1, -1, -1])]
+       
+        return pos
+        
     
     def read_velocity(self):
-        return self.bulk_read(ADDR_MX_PRESENT_VELOCITY, LEN_MX_PRESENT_VELOCITY, self.motor_ids)
+        vels = self.bulk_read(ADDR_MX_PRESENT_VELOCITY, LEN_MX_PRESENT_VELOCITY, self.motor_ids)  
+        vels = [vel * factor for vel, factor in zip(vels, [1, -1, -1])]
+        return vels
     
     def write_time(self, time):
 
