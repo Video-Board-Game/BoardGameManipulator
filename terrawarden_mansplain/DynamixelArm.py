@@ -58,6 +58,12 @@ class DynamixelArm:
         self.motor_ids = [10, 11, 12]
         self.gripper_ids = [13]
 
+        self.bulk_write(108,4,self.gripper_ids,[200])
+        self.bulk_write(112,4,self.gripper_ids,[200])
+        self.gripper_open = 1750
+        self.gripper_close = 2950
+        self.gripper_coke = 2572
+
    
 
     
@@ -137,19 +143,24 @@ class DynamixelArm:
     def read_gripper_position(self):
         return self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.gripper_ids)[0]
 
+    def write_gripper_time(self, time):
+        time_ms = int(time*1000)
+        acc_time_ms = int(time_ms/3)
+
+        self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.gripper_ids,[time_ms])
+        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.gripper_ids, [acc_time_ms])
+    
+    
+
     def close(self):
         self.port_handler.closePort()
 
 if __name__ == "__main__":
     arm = DynamixelArm()
     arm.set_torque(TORQUE_ENABLE)
-    time.sleep(.5)
-    arm.write_joints([0,0,0])
-    print("Current Positions:", arm.read_position())
-    print("Current Velocities:", arm.read_velocity())
-
-    time.sleep(2)
-    time.sleep(.5)
+    arm.write_gripper(arm.gripper_open)
+    time.sleep(1)
+    arm.write_gripper(arm.gripper_coke)
     # arm.set_torque(TORQUE_DISABLE)
     arm.close()
     

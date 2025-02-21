@@ -8,6 +8,7 @@ from terrawarden_mansplain.ArmKinematics import ArmKinematics  # Import the ArmK
 from geometry_msgs.msg import PoseStamped
 from terrawarden_interfaces.msg import ArmStatus
 import numpy as np
+import time
 
 class ArmNode(Node):
     def __init__(self):
@@ -84,7 +85,7 @@ class ArmNode(Node):
         # print("Current T: ", currentT)
         currentPose=[currentT[0][3],currentT[1][3],currentT[2][3]]
         coefficients=self.kinematics.generate_trajectory(currentPose,[goalx,goaly,goalz],duration_ms)
-        rate = self.create_rate(100)
+        # rate = self.create_rate(100)
         while(self.get_clock().now().nanoseconds*1e-6-startTime<duration_ms):
             t=self.get_clock().now().nanoseconds*1e-6-startTime
             x=0
@@ -100,7 +101,7 @@ class ArmNode(Node):
             # print("Joints: ",joints)
             if joints is not None:
                 self.arm.write_joints(joints)
-            rate.sleep()
+            # rate.sleep()
 
     def runJointTrajectory(self, goal0,goal1,goal2,duration_ms):
         
@@ -110,7 +111,7 @@ class ArmNode(Node):
         
         
         coefficients=self.kinematics.generate_trajectory(currentJoints,[goal0,goal1,goal2],duration_ms)
-        rate = self.create_rate(100)
+        # rate = self.create_rate(100)
         while(self.get_clock().now().nanoseconds*1e-6-startTime<duration_ms):
             t=self.get_clock().now().nanoseconds*1e-6-startTime
             a=0
@@ -125,19 +126,25 @@ class ArmNode(Node):
             # print("Joints: ",joints)
             if joints is not None:
                 self.arm.write_joints(joints)
-            rate.sleep()
+            # rate.sleep()
     
     def stowArm(self):
-        movetime=2
-        pos1 = self.kinematics.fk([-np.pi/2,0,-np.pi/2])
+        movetime=.75
+        pos1 = self.kinematics.fk([0,0,-np.pi/2])
         self.runTaskTrajectory(pos1[0][3],pos1[1][3],pos1[2][3],movetime*1000)
-        
+        self.arm.write_gripper(self.arm.gripper_open)
         self.runJointTrajectory(-np.pi,0,-np.pi/2,movetime*1000)
-        self.runJointTrajectory(-np.pi,-np.pi/2,np.pi/2,movetime*1000)
+        self.runJointTrajectory(-np.pi,-np.pi/2,0,movetime*1000)
+        self.runJointTrajectory(-5*np.pi/6,-np.pi/2,np.pi/2,movetime*1000)
+        
     
     def unStowArm(self):
-        movetime=2
-        self.runJointTrajectory(0,0,-np.pi/2,movetime*1000)
+        movetime=.75
+        self.runJointTrajectory(-np.pi,-np.pi/2,0,movetime*1000)
+        self.runJointTrajectory(-np.pi,0,0,movetime*1000)
+        
+        self.runJointTrajectory(0,0,-np.pi/2,1.5*movetime*1000)
+        
         pos1 = self.kinematics.fk([0,0,0])
         self.runTaskTrajectory(pos1[0][3],pos1[1][3],pos1[2][3],movetime*1000)
         
@@ -148,8 +155,9 @@ class ArmNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ArmNode()    
+    print("Starting arm node")
     # node.arm.set_torque(False)
-    # node.runJointTrajectory(0,0,0,2000)
+    node.runJointTrajectory(0,0,0,2000)
     
     print(node.arm.read_position())
     node.stowArm()

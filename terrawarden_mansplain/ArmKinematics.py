@@ -85,7 +85,7 @@ class ArmKinematics:
         for i in range(4):
             for j in range(2):
                 for k in range(2):
-                    joints = np.array([joint0[j],joint1[i],joint2[k]])
+                    joints = np.array([joint0[j],(j*-2+1)*joint1[i],joint2[k]])
                     valid = True
                     for l in range(3):
                         if(joints[l]<self.jointLims[l][0] or joints[l]>self.jointLims[l][1]):
