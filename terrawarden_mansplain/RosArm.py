@@ -55,7 +55,7 @@ class ArmNode(Node):
         print(status_msg)
         self.status_publisher.publish(status_msg)
 
-    def runTrajectory(self, goalx,goaly,goalz,duration):
+    def runTaskTrajectory(self, goalx,goaly,goalz,duration_ms):
         print(goalx,goaly,goalz)
         self.arm.write_time(0.1)
         startTime=self.get_clock().now().nanoseconds*1e-6
@@ -63,8 +63,8 @@ class ArmNode(Node):
         print("Current Joints: ", self.arm.read_position())
         print("Current T: ", currentT)
         currentPose=[currentT[0][3],currentT[1][3],currentT[2][3]]
-        coefficients=self.kinematics.generate_trajectory(currentPose,[goalx,goaly,goalz],duration)
-        while(self.get_clock().now().nanoseconds*1e-6-startTime<duration):
+        coefficients=self.kinematics.generate_trajectory(currentPose,[goalx,goaly,goalz],duration_ms)
+        while(self.get_clock().now().nanoseconds*1e-6-startTime<duration_ms):
             t=self.get_clock().now().nanoseconds*1e-6-startTime
             x=0
             y=0
@@ -77,8 +77,53 @@ class ArmNode(Node):
             joints = self.kinematics.ik(x,y,z)
             print("XYZ: ",x,y,z)
             print("Joints: ",joints)
-            if joints:
+            if joints is not None:
                 self.arm.write_joints(joints)
+
+    def runJointTrajectory(self, goal0,goal1,goal2,duration_ms):
+        
+        self.arm.write_time(0.1)
+        startTime=self.get_clock().now().nanoseconds*1e-6
+        currentJoints=self.arm.read_position()
+        
+        
+        coefficients=self.kinematics.generate_trajectory(currentJoints,[goal0,goal1,goal2],duration_ms)
+        while(self.get_clock().now().nanoseconds*1e-6-startTime<duration_ms):
+            t=self.get_clock().now().nanoseconds*1e-6-startTime
+            a=0
+            b=0
+            c=0
+            for i in range(6):
+                a+=coefficients[0][i]*t**i
+                b+=coefficients[1][i]*t**i
+                c+=coefficients[2][i]*t**i
+            
+            joints = [a,b,c]
+            print("Joints: ",joints)
+            if joints is not None:
+                self.arm.write_joints(joints)
+
+    def stowArm(self):
+        movetime=2
+        pos1 = self.kinematics.fk([-np.pi/2,0,-np.pi/2])
+        self.runTaskTrajectory(pos1[0][3],pos1[1][3],pos1[2][3],movetime*1000)
+        # pos2 = self.kinematics.fk([np.pi,0,-np.pi/2])
+        
+        self.runJointTrajectory(-np.pi,0,-np.pi/2,movetime*1000)
+        # pos3 = self.kinematics.fk([np.pi,-np.pi/2,np.pi/2-np.pi/12])
+        self.runJointTrajectory(-np.pi,-np.pi/2,np.pi/2,movetime*1000)
+    
+    def unStowArm(self):
+        movetime=2
+        
+        
+        
+        self.runJointTrajectory(0,0,-np.pi/2,movetime*1000)
+        
+        
+
+        pos1 = self.kinematics.fk([0,0,0])
+        self.runTaskTrajectory(pos1[0][3],pos1[1][3],pos1[2][3],movetime*1000)
         
     
 
@@ -86,22 +131,27 @@ class ArmNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ArmNode()
-    node.arm.write_time(0.5)
-    rclpy.spin_once(node, timeout_sec=0.5)
-    print(node.arm.read_position())
-    for i in range(10):
-        node.arm.write_time(2)
-        funpos = node.kinematics.fk([np.pi/3,-np.pi/3,np.pi/3]) 
-        node.runTrajectory(funpos[0][3],funpos[1][3],funpos[2][3],2000)
-        rclpy.spin_once(node, timeout_sec=.5)
-        
-        zeropos=node.kinematics.fk([0,0,0])
-
-        node.runTrajectory(zeropos[0][3],zeropos[1][3],zeropos[2][3],2000)
-        rclpy.spin_once(node, timeout_sec=.5)
-    # rclpy.spin(node)
+    node = ArmNode()    
+    # node.arm.set_torque(False)
+    # node.runJointTrajectory(0,0,0,2000)
     
+    print(node.arm.read_position())
+    node.stowArm()
+    node.unStowArm()
+
+    # for i in range(3):
+    #     node.arm.write_time(2)
+    #     funpos = node.kinematics.fk([np.pi/3,-np.pi/3,np.pi/3]) 
+    #     node.runTaskTrajectory(funpos[0][3],funpos[1][3],funpos[2][3],2000)
+    #     # rclpy.spin_once(node, timeout_sec=.5)
+        
+    #     zeropos=node.kinematics.fk([0,0,0])
+
+    #     node.runTaskTrajectory(zeropos[0][3],zeropos[1][3],zeropos[2][3],2000)
+    #     # rclpy.spin_once(node, timeout_sec=.5)
+    # rclpy.spin(node)
+    # node.stowArm()
+    # rclpy.spin(node)
 
 if __name__ == '__main__':
     main()
