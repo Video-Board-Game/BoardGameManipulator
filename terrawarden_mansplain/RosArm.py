@@ -19,10 +19,21 @@ class ArmNode(Node):
         self.status_publisher = self.create_publisher(ArmStatus, 'arm_status', 10)
         self.srv = self.create_service(Empty, 'get_joints', self.get_joints_callback)
         self.timer = self.create_timer(0.5, self.publish_status)
-        self.subscription = self.create_subscription(
+        self.create_service(Empty, 'stow_arm', self.stowArm)
+        self.create_service(Empty, 'unstow_arm', self.unStowArm)
+
+        
+        self.create_subscription(
             PoseStamped,
             'arm_target',
             self.arm_target_callback,
+            10
+        )
+
+        self.create_subscription(
+            PoseStamped,
+            'arm_trajectory_target',
+            self.arm_traj_callback,
             10
         )
 
@@ -36,10 +47,19 @@ class ArmNode(Node):
         
 
     def arm_target_callback(self, msg):
-        target_pose = msg.pose
-        joint_angles = self.kinematics.inverse_kinematics(target_pose)
-        self.arm.set_joints(joint_angles)
-        self.get_logger().info(f'Set joints to: {joint_angles}')
+        target_pose = msg.pose.position
+        self.arm.write_time(0.1)
+        joints = self.kinematics.ik(target_pose.x, target_pose.y, target_pose.z)
+        if joints is not None:
+            self.arm.write_joints(joints)
+        else:
+            self.get_logger().error("Invalid IK solution")
+        
+    def arm_traj_callback(self, msg):
+        target_pose = msg.pose.position
+        duration_ms = msg.header.stamp.sec * 1000 + msg.header.stamp.nanosec / 1e6 - self.get_clock().now().nanoseconds * 1e-6        
+        self.runTaskTrajectory(target_pose.x,target_pose.y,target_pose.z,duration_ms)
+        
 
     def publish_status(self):
         status_msg = ArmStatus()
@@ -60,10 +80,11 @@ class ArmNode(Node):
         self.arm.write_time(0.1)
         startTime=self.get_clock().now().nanoseconds*1e-6
         currentT=self.kinematics.fk(self.arm.read_position())
-        print("Current Joints: ", self.arm.read_position())
-        print("Current T: ", currentT)
+        # print("Current Joints: ", self.arm.read_position())
+        # print("Current T: ", currentT)
         currentPose=[currentT[0][3],currentT[1][3],currentT[2][3]]
         coefficients=self.kinematics.generate_trajectory(currentPose,[goalx,goaly,goalz],duration_ms)
+        rate = self.create_rate(100)
         while(self.get_clock().now().nanoseconds*1e-6-startTime<duration_ms):
             t=self.get_clock().now().nanoseconds*1e-6-startTime
             x=0
@@ -75,10 +96,11 @@ class ArmNode(Node):
                 z+=coefficients[2][i]*t**i
             
             joints = self.kinematics.ik(x,y,z)
-            print("XYZ: ",x,y,z)
-            print("Joints: ",joints)
+            # print("XYZ: ",x,y,z)
+            # print("Joints: ",joints)
             if joints is not None:
                 self.arm.write_joints(joints)
+            rate.sleep()
 
     def runJointTrajectory(self, goal0,goal1,goal2,duration_ms):
         
@@ -88,6 +110,7 @@ class ArmNode(Node):
         
         
         coefficients=self.kinematics.generate_trajectory(currentJoints,[goal0,goal1,goal2],duration_ms)
+        rate = self.create_rate(100)
         while(self.get_clock().now().nanoseconds*1e-6-startTime<duration_ms):
             t=self.get_clock().now().nanoseconds*1e-6-startTime
             a=0
@@ -99,29 +122,22 @@ class ArmNode(Node):
                 c+=coefficients[2][i]*t**i
             
             joints = [a,b,c]
-            print("Joints: ",joints)
+            # print("Joints: ",joints)
             if joints is not None:
                 self.arm.write_joints(joints)
-
+            rate.sleep()
+    
     def stowArm(self):
         movetime=2
         pos1 = self.kinematics.fk([-np.pi/2,0,-np.pi/2])
         self.runTaskTrajectory(pos1[0][3],pos1[1][3],pos1[2][3],movetime*1000)
-        # pos2 = self.kinematics.fk([np.pi,0,-np.pi/2])
         
         self.runJointTrajectory(-np.pi,0,-np.pi/2,movetime*1000)
-        # pos3 = self.kinematics.fk([np.pi,-np.pi/2,np.pi/2-np.pi/12])
         self.runJointTrajectory(-np.pi,-np.pi/2,np.pi/2,movetime*1000)
     
     def unStowArm(self):
         movetime=2
-        
-        
-        
         self.runJointTrajectory(0,0,-np.pi/2,movetime*1000)
-        
-        
-
         pos1 = self.kinematics.fk([0,0,0])
         self.runTaskTrajectory(pos1[0][3],pos1[1][3],pos1[2][3],movetime*1000)
         
