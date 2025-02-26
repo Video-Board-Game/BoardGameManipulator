@@ -18,10 +18,11 @@ class ArmNode(Node):
         self.arm.set_torque(True)
         self.kinematics = ArmKinematics()
         self.status_publisher = self.create_publisher(ArmStatus, 'arm_status', 10)
-        self.srv = self.create_service(Empty, 'get_joints', self.get_joints_callback)
+        # self.srv = self.create_service(Empty, 'get_joints', self.get_joints_callback)
         self.timer = self.create_timer(0.5, self.publish_status)
         self.create_service(Empty, 'stow_arm', self.stowArm)
         self.create_service(Empty, 'unstow_arm', self.unStowArm)
+        self.inmotion = False
 
         
         self.create_subscription(
@@ -33,7 +34,7 @@ class ArmNode(Node):
 
         self.create_subscription(
             PoseStamped,
-            'arm_trajectory_target',
+            'joisie_extract_centroid',
             self.arm_traj_callback,
             10
         )
@@ -49,7 +50,7 @@ class ArmNode(Node):
 
     def arm_target_callback(self, msg):
         target_pose = msg.pose.position
-        self.arm.write_time(0.1)
+        self.arm.write_time(2)
         joints = self.kinematics.ik(target_pose.x, target_pose.y, target_pose.z)
         if joints is not None:
             self.arm.write_joints(joints)
@@ -57,9 +58,13 @@ class ArmNode(Node):
             self.get_logger().error("Invalid IK solution")
         
     def arm_traj_callback(self, msg):
-        target_pose = msg.pose.position
-        duration_ms = msg.header.stamp.sec * 1000 + msg.header.stamp.nanosec / 1e6 - self.get_clock().now().nanoseconds * 1e-6        
-        self.runTaskTrajectory(target_pose.x,target_pose.y,target_pose.z,duration_ms)
+        if not self.inmotion:
+            self.inmotion=True
+            print("I like to move it move it")
+            target_pose = msg.pose.position
+            duration_ms = msg.header.stamp.sec * 1000 + msg.header.stamp.nanosec / 1e6 - self.get_clock().now().nanoseconds * 1e-6        
+            self.runTaskTrajectory(target_pose.x,target_pose.y,target_pose.z,duration_ms)
+            self.inmotion = False
         
 
     def publish_status(self):
@@ -72,7 +77,7 @@ class ArmNode(Node):
         status_msg.joint1velocity = float(armVel[0])
         status_msg.joint2velocity = float(armVel[1])
         status_msg.joint3velocity = float(armVel[2])
-        gripperPos=float(self.arm.read_gripper_position())
+        # gripperPos=float(self.arm.read_gripper_position())
         print(status_msg)
         self.status_publisher.publish(status_msg)
 
@@ -159,9 +164,9 @@ def main(args=None):
     # node.arm.set_torque(False)
     node.runJointTrajectory(0,0,0,2000)
     
-    print(node.arm.read_position())
-    node.stowArm()
-    node.unStowArm()
+    # print(node.arm.read_position())
+    # node.stowArm()
+    # node.unStowArm()
 
     # for i in range(3):
     #     node.arm.write_time(2)
@@ -175,7 +180,7 @@ def main(args=None):
     #     # rclpy.spin_once(node, timeout_sec=.5)
     # rclpy.spin(node)
     # node.stowArm()
-    # rclpy.spin(node)
+    rclpy.spin(node)
 
 if __name__ == '__main__':
     main()
