@@ -190,6 +190,6 @@ if __name__ == "__main__":
     print(t)
     t = arm.fk([np.pi/2,np.pi/2,np.pi/2])
     print(t)
-    v=arm.vk([0,0,0])
-    print(v)
+    # v=arm.vk([0,0,0])
+    # print(v)
    

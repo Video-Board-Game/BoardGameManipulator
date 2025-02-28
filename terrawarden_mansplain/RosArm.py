@@ -23,6 +23,8 @@ class ArmNode(Node):
         self.create_service(Empty, 'stow_arm', self.stowArm)
         self.create_service(Empty, 'unstow_arm', self.unStowArm)
         self.inmotion = False
+        self.startingMovementTime=-1
+        self.trajCoeff=np.zeros([3,5])
 
         
         self.create_subscription(
@@ -61,10 +63,13 @@ class ArmNode(Node):
         if not self.inmotion:
             self.inmotion=True
             print("I like to move it move it")
+            print (self.kinematics.fk(self.arm.read_position()))
+            
             target_pose = msg.pose.position
             duration_ms = msg.header.stamp.sec * 1000 + msg.header.stamp.nanosec / 1e6 - self.get_clock().now().nanoseconds * 1e-6        
-            self.runTaskTrajectory(target_pose.x,target_pose.y,target_pose.z,duration_ms)
+            self.runTaskTrajectory(target_pose.x,target_pose.y,target_pose.z,2000)
             self.inmotion = False
+            print("What is motion")
         
 
     def publish_status(self):
@@ -73,18 +78,27 @@ class ArmNode(Node):
         status_msg.joint1position = float(armPos[0])
         status_msg.joint2position = float(armPos[1])
         status_msg.joint3position = float(armPos[2])
+        eepos=self.kinematics.fk(armPos)
+        status_msg.eex=float(eepos[0][3])
+        status_msg.eey=float(eepos[1][3])
+        status_msg.eez=float(eepos[2][3])
         armVel=self.arm.read_velocity()
         status_msg.joint1velocity = float(armVel[0])
         status_msg.joint2velocity = float(armVel[1])
         status_msg.joint3velocity = float(armVel[2])
         # gripperPos=float(self.arm.read_gripper_position())
-        print(status_msg)
+        # print(status_msg)
         self.status_publisher.publish(status_msg)
 
     def runTaskTrajectory(self, goalx,goaly,goalz,duration_ms):
         print(goalx,goaly,goalz)
+        print(self.kinematics.ik(goalx,goaly,goalz))
         self.arm.write_time(0.1)
         startTime=self.get_clock().now().nanoseconds*1e-6
+        print(startTime)
+        t=self.get_clock().now().nanoseconds*1e-6-startTime
+        print(t)
+        print(duration_ms)
         currentT=self.kinematics.fk(self.arm.read_position())
         # print("Current Joints: ", self.arm.read_position())
         # print("Current T: ", currentT)
@@ -103,7 +117,8 @@ class ArmNode(Node):
             
             joints = self.kinematics.ik(x,y,z)
             # print("XYZ: ",x,y,z)
-            # print("Joints: ",joints)
+            print(t)
+            print("Joints: ",joints)
             if joints is not None:
                 self.arm.write_joints(joints)
             # rate.sleep()

@@ -10,6 +10,7 @@ ADDR_MX_PRESENT_POSITION = 132      # Address for reading current position
 ADDR_MX_PRESENT_VELOCITY = 128      # Address for reading current velocity
 ADDR_MX_PROFILE_VELOCITY = 112      # Address for setting profile velocity
 ADDR_MX_PROFILE_ACCELERATION = 108  # Address for setting profile acceleration
+ADDR_MX_CURRENT =126
 
 # Data Byte Length
 LEN_MX_OPERATING_MODE = 1
@@ -19,6 +20,7 @@ LEN_MX_PRESENT_POSITION = 4
 LEN_MX_PRESENT_VELOCITY = 4
 LEN_MX_PROFILE_VELOCITY = 4
 LEN_MX_PROFILE_ACCELERATION = 4
+LEN_MX_CURRENT = 2
 
 
 # Protocol version
