@@ -163,7 +163,7 @@ class ArmKinematics:
         
         return jac
     
-    def generate_trajectory(self, start, end, duration):
+    def generate_trajectory(self, start, end, start_time=0, end_time=1):
         coeffs = np.zeros((3,6))
         def quintic_traj(start_angle, end_angle, start_vel, end_vel, start_acc, end_acc, start_time, end_time):
             answer_vec = np.array([start_angle, start_vel, start_acc, end_angle, end_vel, end_acc])
@@ -181,8 +181,21 @@ class ArmKinematics:
             if s==e:
                 coeffs[i] = np.zeros(6)
             else:
-                coeffs[i] = quintic_traj(s,e,0,0,0,0,0,duration)
+                coeffs[i] = quintic_traj(s,e,0,0,0,0,start_time,end_time)
+
         return coeffs
+    
+    def check_move_safe(self, joints):
+        if not (self.jointLims[1][0] <= joints[1] <= self.jointLims[1][1] and self.jointLims[2][0] <= joints[2] <= self.jointLims[2][1]):
+            return False
+        
+        fk_pos = self.fk(joints)
+        x, y, z = fk_pos[0, 3], fk_pos[1, 3], fk_pos[2, 3]
+        
+        if z < 0 and (x**2 + y**2 >= self.L1**2 or z <= -self.L1):
+            return True
+        
+        return False
 
 if __name__ == "__main__":
     arm = ArmKinematics()
