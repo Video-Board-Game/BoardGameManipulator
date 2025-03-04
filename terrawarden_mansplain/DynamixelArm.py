@@ -2,6 +2,7 @@ import dynamixel_sdk as dxl
 from dynamixel_sdk import COMM_SUCCESS, COMM_TX_FAIL
 import numpy as np
 import time
+import platform 
 # Control table address
 ADDR_MX_OPERATING_MODE = 11         # Address for operating mode
 ADDR_MX_TORQUE_ENABLE = 64         # Address for enabling torque
@@ -29,6 +30,7 @@ PROTOCOL_VERSION = 2.0  # Check your Dynamixel model's protocol version
 # Default setting
 # Dynamixel ID (Change based on your setup)
 BAUDRATE = 1000000         # Dynamixel baudrate
+
 DEVICENAME = '/dev/ttyACM0'  # Port (Update according to your system)
 
 TORQUE_ENABLE = 1        # Enable torque
@@ -47,7 +49,13 @@ GRIPPER_CLOSE = 3072
 
 class DynamixelArm:
     def __init__(self):
-        self.port_handler = dxl.PortHandler(DEVICENAME)
+        os_name = platform.system()
+        deviceName="/dev/ttyACM0"
+        if os_name == "Windows":
+            deviceName = "COM5"
+       
+        
+        self.port_handler = dxl.PortHandler(deviceName)
         self.packet_handler = dxl.PacketHandler(2.0)
         self.group_bulk_read = dxl.GroupBulkRead(self.port_handler, self.packet_handler)
         self.group_bulk_write = dxl.GroupBulkWrite(self.port_handler, self.packet_handler)
@@ -158,13 +166,21 @@ class DynamixelArm:
         self.port_handler.closePort()
 
 if __name__ == "__main__":
-    arm = DynamixelArm()
-    arm.set_torque(TORQUE_ENABLE)
-    arm.write_gripper(arm.gripper_open)
-    time.sleep(1)
-    arm.write_gripper(arm.gripper_coke)
-    # arm.set_torque(TORQUE_DISABLE)
-    arm.close()
+    os_name = platform.system()
+
+    if os_name == "Windows":
+        print("Operating System: Windows")
+    elif os_name == "Linux":
+        print("Operating System: Linux")
+    else:
+        print(f"Operating System: {os_name}")
+    # arm = DynamixelArm()
+    # arm.set_torque(TORQUE_ENABLE)
+    # arm.write_gripper(arm.gripper_open)
+    # time.sleep(1)
+    # arm.write_gripper(arm.gripper_coke)
+    # # arm.set_torque(TORQUE_DISABLE)
+    # arm.close()
     
     
     
