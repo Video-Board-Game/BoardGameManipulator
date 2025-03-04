@@ -68,11 +68,13 @@ class DynamixelArm:
         self.motor_ids = [10, 11, 12]
         self.gripper_ids = [13]
 
-        self.bulk_write(108,4,self.gripper_ids,[200])
-        self.bulk_write(112,4,self.gripper_ids,[200])
+        # self.bulk_write(108,4,self.gripper_ids,[200])
+        # self.bulk_write(112,4,self.gripper_ids,[200])
         self.gripper_open = 1750
         self.gripper_close = 2950
         self.gripper_coke = 2572
+
+        # self.bulk_write(ADDR_MX_OPERATING_MODE,LEN_MX_OPERATING_MODE,self.motor_ids,[OP_MODE_EXPOS for i in self.motor_ids])
 
    
 
@@ -166,16 +168,11 @@ class DynamixelArm:
         self.port_handler.closePort()
 
 if __name__ == "__main__":
-    os_name = platform.system()
-
-    if os_name == "Windows":
-        print("Operating System: Windows")
-    elif os_name == "Linux":
-        print("Operating System: Linux")
-    else:
-        print(f"Operating System: {os_name}")
-    # arm = DynamixelArm()
-    # arm.set_torque(TORQUE_ENABLE)
+    
+    arm = DynamixelArm()
+    arm.set_torque(TORQUE_ENABLE)
+    arm.write_time(2)
+    arm.write_joints([0,0,0])
     # arm.write_gripper(arm.gripper_open)
     # time.sleep(1)
     # arm.write_gripper(arm.gripper_coke)

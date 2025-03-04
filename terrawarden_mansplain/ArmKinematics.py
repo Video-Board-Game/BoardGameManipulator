@@ -102,12 +102,12 @@ class ArmKinematics:
                     break
             if validAnswer:
                 break
-        if not validAnswer:
-            print("No valid IK solution found")
-            print("x,y,z: ",x,y,z)
-            print("joint0: ",joint0)
-            print("joint1: ",joint1)
-            print("joint2: ",joint2)
+        # if not validAnswer:
+            # print("No valid IK solution found")
+            # print("x,y,z: ",x,y,z)
+            # print("joint0: ",joint0)
+            # print("joint1: ",joint1)
+            # print("joint2: ",joint2)
         return validJoints if validAnswer else None
 
 
