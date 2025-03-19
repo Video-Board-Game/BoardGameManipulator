@@ -20,7 +20,7 @@ class ArmNode(Node):
         self.kinematics = ArmKinematics()
         self.status_publisher = self.create_publisher(ArmStatus, 'arm_status', 10)
         # self.srv = self.create_service(Empty, 'get_joints', self.get_joints_callback)
-        self.create_timer(0.5, self.publish_status)
+        self.create_timer(0.2, self.publish_status)
         
         self.create_service(Empty, 'stow_arm', self.stowArm)
         self.create_service(Empty, 'unstow_arm', self.unStowArm)
@@ -30,10 +30,10 @@ class ArmNode(Node):
         self.trajCoeff=np.zeros([3,6])
         self.goal = np.zeros(3)
         self.endingMovementTime=-1
-        self.create_timer(0.1, self.run_traj_callback)  # Timer to run the trajectory callback
+        self.create_timer(0.01, self.run_traj_callback)  # Timer to run the trajectory callback
         self.trajMode="task"
         self.stowSteps=[]
-        self.create_timer(1, self.run_stowArm_callback)  # Timer to run the stow arm callback
+        self.create_timer(2, self.run_stowArm_callback)  # Timer to run the stow arm callback
         
         # self.create_subscription(
         #     PoseStamped,
@@ -150,15 +150,20 @@ class ArmNode(Node):
                 print("Invalid stow step")
     
     def stowArm(self):
-        pos1 = self.kinematics.fk([0,0,-np.pi/2])       
-        self.stowSteps=[["joint",0,0,-np.pi/2],["joint",-15*np.pi/16,0,-np.pi/2],["joint",-15*np.pi/16,-np.pi/2,np.pi/2],["joint",-3*np.pi/4,-np.pi/2,np.pi/2]]
+        # pos1 = self.kinematics.fk([0,0,-np.pi/2])       
+        self.stowSteps=[["joint",0,0,-np.pi/2],
+                        ["joint",-31*np.pi/32,0,-np.pi/2],
+                        ["joint",-31*np.pi/32,-np.pi/2.1,np.pi/2.1],
+                        ["joint",-2*np.pi/3,-np.pi/2.1,np.pi/2.1]]
         
         
         
     
     def unStowArm(self):
         pos1 = self.kinematics.fk([0,0,0])
-        self.stowSteps=[["joint",-15*np.pi/16,-np.pi/2,np.pi/2],["joint",-15*np.pi/16,0,-np.pi/2],["joint",0,0,-np.pi/2],["joint",0,0,0]]
+        self.stowSteps=[["joint",-31*np.pi/32,-np.pi/2.1,np.pi/2.1],
+                        ["joint",-31*np.pi/32,-np.pi/6,-np.pi/2],
+                        ["joint",0,0,0]]
         
         
     
@@ -170,11 +175,15 @@ def main(args=None):
     rclpy.init(args=args)
     node = ArmNode()    
     print("Starting arm node")
-    # node.arm.set_torque(False)
-    # node.runJointTrajectory(0,0,0,2000)
+    # node.arm.reboot()
+    node.arm.set_torque(True)
+    # node.runJointTrajectory(0,np.pi/2,-np.pi/2,3000)
+    #node.runJointTrajectory(0,0,0,750)
+    # node.runJointTrajectory(-3*np.pi/4,-np.pi/2.1,np.pi/2,3000)
+    # node.runJointTrajectory(0,0,-np.pi/2,1000)
     
     # print(node.arm.read_position())
-    # node.stowArm()
+    node.stowArm()
     # node.unStowArm()
 
     # for i in range(3):

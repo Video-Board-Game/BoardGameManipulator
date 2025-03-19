@@ -162,7 +162,10 @@ class DynamixelArm:
         self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.gripper_ids,[time_ms])
         self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.gripper_ids, [acc_time_ms])
     
-    
+    def reboot(self):
+        for id in self.motor_ids:
+            self.packet_handler.reboot(self.port_handler,id)
+        # self.packet_handler.reboot(self.port_handler,self.gripper_ids[0])
 
     def close(self):
         self.port_handler.closePort()
