@@ -15,26 +15,39 @@ class ArmNode(Node):
     def __init__(self):
         super().__init__('arm_node')
         
+        # Initialization
         self.arm = DynamixelArm()
         self.arm.set_torque(True)
         self.kinematics = ArmKinematics()
-        self.status_publisher = self.create_publisher(ArmStatus, 'arm_status', 10)
-        # self.srv = self.create_service(Empty, 'get_joints', self.get_joints_callback)
-        self.create_timer(0.2, self.publish_status)
         
-        self.create_service(Empty, 'stow_arm', self.stowArm)
-        self.create_service(Empty, 'unstow_arm', self.unStowArm)
+
+        
+        
+        #storing node start time to shrink the times stored to avoid numerical errors
         self.init_time=self.get_clock().now().nanoseconds*1e-6
-        self.inmotion = False
-        self.startingMovementTime=-1
+        self.startingMovementTime=-1 #time when the trajectory starts
+        self.endingMovementTime=-1 #time when the trajectory ends
+
         self.trajCoeff=np.zeros([3,6])
-        self.goal = np.zeros(3)
-        self.endingMovementTime=-1
-        self.create_timer(0.01, self.run_traj_callback)  # Timer to run the trajectory callback
-        self.trajMode="task"
-        self.stowSteps=[]
-        self.create_timer(2, self.run_stowArm_callback)  # Timer to run the stow arm callback
+        self.goal = np.zeros(3) #current goal position
+        self.isStowed=False
         
+        self.trajMode="task"
+        self.stowSteps=[] # list of steps to run in stowing routine
+
+        # Publishers
+        self.status_publisher = self.create_publisher(ArmStatus, 'arm_status', 10)  # Publisher for arm status
+
+        # Services
+        self.create_service(Empty, 'stow_arm', self.stowArm) #service to stow the arm
+        self.create_service(Empty, 'unstow_arm', self.unStowArm) #service to unstow the arm
+
+        # Timers
+        self.create_timer(0.01, self.run_traj_callback)  # Timer to run the trajectory callback
+        self.create_timer(2, self.run_stowArm_callback)  # Timer to run the stow arm callback
+        self.create_timer(0.2, self.publish_status)  # Timer to publish arm status
+        
+        # Subscriptions
         # self.create_subscription(
         #     PoseStamped,
         #     'arm_target',
@@ -50,15 +63,10 @@ class ArmNode(Node):
         )
 
 
-    def get_joints_callback(self, request, response):
-        joints = self.arm.get_joints()
-        msg = Float64MultiArray()
-        msg.data = joints
-        self.get_logger().info(f'Joints: {joints}')
-        response.success = True  # Assuming Empty service has a success field
-        return response
+    
         
 
+    # Subscription callbacks
     # def arm_target_callback(self, msg):
     #     target_pose = msg.pose.position
     #     self.arm.write_time(2)
@@ -70,7 +78,15 @@ class ArmNode(Node):
         
         
     def arm_traj_callback(self, msg):
-        if len(self.stowSteps)==0:
+        """Callback function for the arm trajectory topic.
+        This function processes incoming PoseStamped messages and generates a trajectory for the arm to follow.
+        It checks if the arm is currently unstowed and if so, it generates a trajectory to the specified goal position.
+        Args:
+            msg (PoseStamped): The incoming PoseStamped message containing the target pose.
+        Returns:
+            None
+        """
+        if len(self.stowSteps)==0 and not self.isStowed:
             print(["Goal", msg.pose.position])
             target_pose = msg.pose.position
             self.trajMode="task"
@@ -82,28 +98,52 @@ class ArmNode(Node):
             self.trajCoeff=self.kinematics.generate_trajectory([current_pos[0][3],current_pos[1][3],current_pos[2][3]], self.goal, self.startingMovementTime,self.endingMovementTime)
         
         
+    # Timer callbacks
     def run_traj_callback(self):
+        """Runs the trajectory for the arm based on the current mode (task or joint).
+        This function checks if the current time is within the trajectory duration and updates the arm's position accordingly.
+        If the trajectory is in task mode, it calculates the joint angles using inverse kinematics.
+        If the trajectory is in joint mode, it directly sets the joint angles.
+        Args:
+            None
+        Returns:
+            None
+        """
+        # Check if the trajectory is still running
         if self.get_clock().now().nanoseconds*1e-6-self.init_time<self.endingMovementTime:
-            self.arm.write_time(0.1)
+            self.arm.write_time(0.1)#makes sure movements are fast
             t=self.get_clock().now().nanoseconds*1e-6-self.init_time
             a=0
             b=0
             c=0
+            #calculates the points within the trajectory whether joint or task
             for i in range(6):
                 a+=self.trajCoeff[0][i]*t**i
                 b+=self.trajCoeff[1][i]*t**i
                 c+=self.trajCoeff[2][i]*t**i
+            #if task mode, calculates the joint angles using inverse kinematics
             if self.trajMode=="task":
                 joints = self.kinematics.ik(a,b,c)
             else:
                 joints = np.array([a,b,c])
-            print("ABC: ",a,b,c)
-            print("Joints: ",joints)
+            # print("ABC: ",a,b,c)
+            # print("Joints: ",joints)
             if joints is not None and self.kinematics.check_move_safe(joints):
                 self.arm.write_joints(joints)
 
 
     def publish_status(self):
+        """
+        Publishes the current status of the robotic arm.
+        This function reads the current joint positions, end-effector position, 
+        and joint velocities of the robotic arm, and publishes this information 
+        as an `ArmStatus` message.
+        Args:
+            None
+        Returns:
+            None
+        """
+
         status_msg = ArmStatus()
         armPos=self.arm.read_position()
         status_msg.joint1position = float(armPos[0])
@@ -124,7 +164,22 @@ class ArmNode(Node):
         self.status_publisher.publish(status_msg)
 
 
+    # Trajectory methods
     def runTaskTrajectory(self, goalx,goaly,goalz,duration_ms):
+        """
+        Creates a task space trajectory for the robotic arm.
+        This function generates a trajectory in task space for the robotic arm
+        to move from its current position to the specified goal position in 
+        Cartesian coordinates (x, y, z) within the given duration.
+        Args:
+            goalx (float): The target x-coordinate in task space.
+            goaly (float): The target y-coordinate in task space.
+            goalz (float): The target z-coordinate in task space.
+            duration_ms (float): The duration of the trajectory in milliseconds.
+        Returns:
+            None
+        """
+        
         self.trajMode="task"
         self.goal = np.array([goalx,goaly,goalz])
         self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6 - self.init_time
@@ -133,23 +188,46 @@ class ArmNode(Node):
 
 
     def runJointTrajectory(self, goal0,goal1,goal2,duration_ms):
+        """
+        Creates a joint space trajectory for the robotic arm.
+        This function generates a trajectory in joint space for the robotic arm
+        to move from its current position to the specified goal positions for 
+        each joint within the given duration.
+        Args:
+            goal0 (float): The target position for joint 0.
+            goal1 (float): The target position for joint 1.
+            goal2 (float): The target position for joint 2.
+            duration_ms (float): The duration of the trajectory in milliseconds.
+        Returns:
+            None
+        """
+
         self.trajMode="joint"
         self.goal = np.array([goal0,goal1,goal2])
         self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6-self.init_time
         self.endingMovementTime = self.startingMovementTime + duration_ms
-        # print(self.arm.read_position())
-        # print(self.startingMovementTime)
-        # print(self.endingMovementTime)
         self.trajCoeff=self.kinematics.generate_trajectory(self.arm.read_position(), self.goal, self.startingMovementTime,self.endingMovementTime)
-        # print(self.trajCoeff)
-        # self.endingMovementTime=-1
+        
 
 
+    # Stow/unstow methods
     def run_stowArm_callback(self):
+        """Starts the next trajectory step in the stowing process.
+        This method processes the next step in the `stowSteps` list. Depending on the type of step, 
+        it either runs a task trajectory or a joint trajectory. If the `stowSteps` list becomes empty, 
+        the stow state is flipped to reflect the new state.
+        """
+
         if len(self.stowSteps)>0:
             print("running next stow step")
+            # Takes out the next stow step
             step=self.stowSteps.pop(0)
-            if step[0]=="task":
+
+            if self.stowSteps==[]:#changes stow state on last step
+                self.isStowed= not self.isStowed
+
+            #sets trajectory based of step type
+            if step[0]=="task": 
                 self.runTaskTrajectory(step[1],step[2],step[3],1000)
             elif step[0]=="joint":
                 self.runJointTrajectory(step[1],step[2],step[3],1000)
@@ -158,26 +236,36 @@ class ArmNode(Node):
     
     
     def stowArm(self,req=None,resp=None):
-        # pos1 = self.kinematics.fk([0,0,-np.pi/2])       
-        self.stowSteps=[["joint", 0, 0, -np.pi/2],
-                        ["joint", -31*np.pi/32, 0, -np.pi/2],
-                        ["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
-                        ["joint", -2*np.pi/3, -np.pi/2.1, np.pi/2.1]]
+        """Initiates the stowing sequence if the arm is unstowed.
+
+        Args:
+            req: The service request (unused).
+            resp: The service response (unused).
+        """
+        if not self.isStowed:
+            self.stowSteps=[["joint", 0, 0, -np.pi/2],
+                            ["joint", -31*np.pi/32, 0, -np.pi/2],
+                            ["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
+                            ["joint", -2*np.pi/3, -np.pi/2.1, np.pi/2.1]]
         return resp
         
         
-    
     def unStowArm(self,req=None,resp=None):
-        pos1 = self.kinematics.fk([0,0,0])
-        self.stowSteps=[["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
-                        ["joint", -31*np.pi/32, -np.pi/6, -np.pi/2],
-                        ["joint", 0, 0, 0]]
+        """Initiates the unstowing sequence if the arm is stowed.
+
+        Args:
+            req: The service request (unused).
+            resp: The service response (unused).
+        """
+        if self.isStowed:
+            self.stowSteps=[["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
+                            ["joint", -31*np.pi/32, -np.pi/6, -np.pi/2],
+                            ["joint", 0, 0, 0]]
         return resp
-        
         
 
 def main(args=None):
-    
+    # Main entry point
     rclpy.init(args=args)
     node = ArmNode()    
     print("Starting arm node")
