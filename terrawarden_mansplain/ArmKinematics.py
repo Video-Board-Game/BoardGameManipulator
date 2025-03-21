@@ -3,7 +3,7 @@ import numpy as np
 
 class ArmKinematics:
     def __init__(self):
-        self.L1 = 0.08375
+        self.L1 = 0.20375
         self.L2 = np.hypot(.23746,.017)
         self.L3 = 0.3125
         self.jointOffset=np.arctan(17/237.46)
@@ -38,7 +38,10 @@ class ArmKinematics:
     def fk(self,joints):
         T = np.eye(4)
         for i in range(3):
-            T = T @ self.dh2mat(joints[i],self.dh_table_const[i])
+            dir = 1
+            if i == 1:
+                dir =-1
+            T = T @ self.dh2mat(dir*joints[i],self.dh_table_const[i])
         return T
     
     def ik(self,x,y,z):
@@ -48,8 +51,8 @@ class ArmKinematics:
         r=np.sqrt(x**2+y**2)
 
         
-        joint0[0]=np.arctan2(y,x)
-        joint0[1]=np.arctan2(-y,-x)
+        joint0[0]=-np.arctan2(y,x)
+        joint0[1]=-np.arctan2(-y,-x)
 
         zc = z+self.L1
         

@@ -44,10 +44,11 @@ class ArmNode(Node):
 
         self.create_subscription(
             PoseStamped,
-            'joisie_extract_centroid',
+            'joisie_arm_trajectory_target',
             self.arm_traj_callback,
             10
         )
+
 
     def get_joints_callback(self, request, response):
         joints = self.arm.get_joints()
@@ -67,6 +68,7 @@ class ArmNode(Node):
     #     else:
     #         self.get_logger().error("Invalid IK solution")
         
+        
     def arm_traj_callback(self, msg):
         if len(self.stowSteps)==0:
             print(["Goal", msg.pose.position])
@@ -78,6 +80,7 @@ class ArmNode(Node):
             current_joints = self.arm.read_position()
             current_pos = self.kinematics.fk(current_joints)
             self.trajCoeff=self.kinematics.generate_trajectory([current_pos[0][3],current_pos[1][3],current_pos[2][3]], self.goal, self.startingMovementTime,self.endingMovementTime)
+        
         
     def run_traj_callback(self):
         if self.get_clock().now().nanoseconds*1e-6-self.init_time<self.endingMovementTime:
@@ -99,16 +102,19 @@ class ArmNode(Node):
             if joints is not None and self.kinematics.check_move_safe(joints):
                 self.arm.write_joints(joints)
 
+
     def publish_status(self):
         status_msg = ArmStatus()
         armPos=self.arm.read_position()
         status_msg.joint1position = float(armPos[0])
         status_msg.joint2position = float(armPos[1])
         status_msg.joint3position = float(armPos[2])
+        
         eepos=self.kinematics.fk(armPos)
         status_msg.eex=float(eepos[0][3])
         status_msg.eey=float(eepos[1][3])
         status_msg.eez=float(eepos[2][3])
+        
         armVel=self.arm.read_velocity()
         status_msg.joint1velocity = float(armVel[0])
         status_msg.joint2velocity = float(armVel[1])
@@ -117,13 +123,13 @@ class ArmNode(Node):
         # print(status_msg)
         self.status_publisher.publish(status_msg)
 
+
     def runTaskTrajectory(self, goalx,goaly,goalz,duration_ms):
         self.trajMode="task"
         self.goal = np.array([goalx,goaly,goalz])
-        self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6-self.init_time
+        self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6 - self.init_time
         self.endingMovementTime = self.startingMovementTime + duration_ms
         self.trajCoeff=self.kinematics.generate_trajectory(self.arm.read_position(), self.goal, self.startingMovementTime,self.endingMovementTime)
-
 
 
     def runJointTrajectory(self, goal0,goal1,goal2,duration_ms):
@@ -138,6 +144,7 @@ class ArmNode(Node):
         # print(self.trajCoeff)
         # self.endingMovementTime=-1
 
+
     def run_stowArm_callback(self):
         if len(self.stowSteps)>0:
             print("running next stow step")
@@ -149,26 +156,25 @@ class ArmNode(Node):
             else:
                 print("Invalid stow step")
     
-    def stowArm(self):
+    
+    def stowArm(self,req=None,resp=None):
         # pos1 = self.kinematics.fk([0,0,-np.pi/2])       
-        self.stowSteps=[["joint",0,0,-np.pi/2],
-                        ["joint",-31*np.pi/32,0,-np.pi/2],
-                        ["joint",-31*np.pi/32,-np.pi/2.1,np.pi/2.1],
-                        ["joint",-2*np.pi/3,-np.pi/2.1,np.pi/2.1]]
-        
+        self.stowSteps=[["joint", 0, 0, -np.pi/2],
+                        ["joint", -31*np.pi/32, 0, -np.pi/2],
+                        ["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
+                        ["joint", -2*np.pi/3, -np.pi/2.1, np.pi/2.1]]
+        return resp
         
         
     
-    def unStowArm(self):
+    def unStowArm(self,req=None,resp=None):
         pos1 = self.kinematics.fk([0,0,0])
-        self.stowSteps=[["joint",-31*np.pi/32,-np.pi/2.1,np.pi/2.1],
-                        ["joint",-31*np.pi/32,-np.pi/6,-np.pi/2],
-                        ["joint",0,0,0]]
+        self.stowSteps=[["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
+                        ["joint", -31*np.pi/32, -np.pi/6, -np.pi/2],
+                        ["joint", 0, 0, 0]]
+        return resp
         
         
-    
-
-    
 
 def main(args=None):
     
@@ -177,15 +183,15 @@ def main(args=None):
     print("Starting arm node")
     # node.arm.reboot()
     node.arm.set_torque(True)
-    # node.runJointTrajectory(0,np.pi/2,-np.pi/2,3000)
-    #node.runJointTrajectory(0,0,0,750)
+    # node.runJointTrajectory(0,-np.pi/2,np.pi/2,3000)
+    # node.runJointTrajectory(0,0,0,750)
     # node.runJointTrajectory(-3*np.pi/4,-np.pi/2.1,np.pi/2,3000)
     # node.runJointTrajectory(0,0,-np.pi/2,1000)
     
     # print(node.arm.read_position())
-    node.stowArm()
+    # node.stowArm()
     # node.unStowArm()
-
+# 
     # for i in range(3):
     #     node.arm.write_time(2)
     #     funpos = node.kinematics.fk([np.pi/3,-np.pi/3,np.pi/3]) 
