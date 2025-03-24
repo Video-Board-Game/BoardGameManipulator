@@ -43,7 +43,7 @@ class ArmNode(Node):
         self.create_service(Empty, 'unstow_arm', self.unStowArm) #service to unstow the arm
 
         # Timers
-        self.create_timer(0.01, self.run_traj_callback)  # Timer to run the trajectory callback
+        self.create_timer(0.005, self.run_traj_callback)  # Timer to run the trajectory callback
         self.create_timer(2, self.run_stowArm_callback)  # Timer to run the stow arm callback
         self.create_timer(0.2, self.publish_status)  # Timer to publish arm status
         
@@ -92,10 +92,16 @@ class ArmNode(Node):
             self.trajMode="task"
             self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])
             self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6-self.init_time
-            self.endingMovementTime = self.startingMovementTime + 1000
+            self.endingMovementTime = self.startingMovementTime + 500
+            
             current_joints = self.arm.read_position()
             current_pos = self.kinematics.fk(current_joints)
-            self.trajCoeff=self.kinematics.generate_trajectory([current_pos[0][3],current_pos[1][3],current_pos[2][3]], self.goal, self.startingMovementTime,self.endingMovementTime)
+            current_jac = self.kinematics.vk(current_joints)
+            current_joint_vel = self.arm.read_velocity()
+            current_vel=(current_jac @ np.vstack(current_joint_vel)).flatten()
+            print(current_vel)
+            current_vel=[0,0,0]
+            self.trajCoeff=self.kinematics.generate_trajectory(start=[current_pos[0][3],current_pos[1][3],current_pos[2][3]], end=self.goal, start_vel=current_vel, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
         
         
     # Timer callbacks
@@ -111,7 +117,7 @@ class ArmNode(Node):
         """
         # Check if the trajectory is still running
         if self.get_clock().now().nanoseconds*1e-6-self.init_time<self.endingMovementTime:
-            self.arm.write_time(0.1)#makes sure movements are fast
+            self.arm.write_time(0.08)#makes sure movements are fast
             t=self.get_clock().now().nanoseconds*1e-6-self.init_time
             a=0
             b=0
@@ -184,7 +190,8 @@ class ArmNode(Node):
         self.goal = np.array([goalx,goaly,goalz])
         self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6 - self.init_time
         self.endingMovementTime = self.startingMovementTime + duration_ms
-        self.trajCoeff=self.kinematics.generate_trajectory(self.arm.read_position(), self.goal, self.startingMovementTime,self.endingMovementTime)
+        
+        self.trajCoeff=self.kinematics.generate_trajectory(self.arm.read_position(), self.goal, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
 
 
     def runJointTrajectory(self, goal0,goal1,goal2,duration_ms):
@@ -206,7 +213,7 @@ class ArmNode(Node):
         self.goal = np.array([goal0,goal1,goal2])
         self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6-self.init_time
         self.endingMovementTime = self.startingMovementTime + duration_ms
-        self.trajCoeff=self.kinematics.generate_trajectory(self.arm.read_position(), self.goal, self.startingMovementTime,self.endingMovementTime)
+        self.trajCoeff=self.kinematics.generate_trajectory(self.arm.read_position(), self.goal, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
         
 
 
