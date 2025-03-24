@@ -3,9 +3,9 @@ import numpy as np
 
 class ArmKinematics:
     def __init__(self):
-        self.L1 = 0.20375
+        self.L1 = 0.20375-.02
         self.L2 = np.hypot(.23746,.017)
-        self.L3 = 0.3125
+        self.L3 = 0.3125+.08
         self.jointOffset=np.arctan(17/237.46)
         self.jointLims = [
             (-np.pi/2, np.pi/2),
@@ -39,8 +39,8 @@ class ArmKinematics:
         T = np.eye(4)
         for i in range(3):
             dir = 1
-            if i == 1:
-                dir =-1
+            if i == 0:
+                dir = -1
             T = T @ self.dh2mat(dir*joints[i],self.dh_table_const[i])
         return T
     
@@ -52,7 +52,7 @@ class ArmKinematics:
 
         
         joint0[0]=-np.arctan2(y,x)
-        joint0[1]=-np.arctan2(-y,-x)
+        joint0[1]=np.arctan2(-y,-x)
 
         zc = z+self.L1
         
@@ -117,7 +117,7 @@ class ArmKinematics:
     def vk(self,joint_val):
         l2=self.L2
         l3=self.L3
-        theta1=joint_val[0]
+        theta1=-joint_val[0]
         theta2=joint_val[1]
         theta3=joint_val[2]
         t2 = np.cos(theta1)
@@ -166,7 +166,7 @@ class ArmKinematics:
         
         return jac
     
-    def generate_trajectory(self, start, end, start_time=0, end_time=1):
+    def generate_trajectory(self, start, end, start_vel=[0,0,0], start_time=0, end_time=1):
         coeffs = np.zeros((3,6))
         def quintic_traj(start_angle, end_angle, start_vel, end_vel, start_acc, end_acc, start_time, end_time):
             answer_vec = np.array([start_angle, start_vel, start_acc, end_angle, end_vel, end_acc])
@@ -184,7 +184,8 @@ class ArmKinematics:
             if s==e:
                 coeffs[i] = np.zeros(6)
             else:
-                coeffs[i] = quintic_traj(s,e,0,0,0,0,start_time,end_time)
+                print(start_vel)
+                coeffs[i] = quintic_traj(s,e,0,0,start_vel[i],0,start_time,end_time)
 
         return coeffs
     
@@ -202,9 +203,9 @@ class ArmKinematics:
 
 if __name__ == "__main__":
     arm = ArmKinematics()
-    t = arm.fk([0,0,0])
+    t = arm.fk([np.pi/6,0,0])
     print(t)
-    t = arm.fk([np.pi/2,np.pi/2,np.pi/2])
+    t = arm.ik(t[0][3],t[1][3],t[2][3])
     print(t)
     # v=arm.vk([0,0,0])
     # print(v)

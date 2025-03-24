@@ -85,22 +85,28 @@ class ArmNode(Node):
         Returns:
             None
         """
-        if len(self.stowSteps)==0 and not self.isStowed:
-            print(["Goal", msg.pose.position])
-            target_pose = msg.pose.position
-            self.trajMode="task"
-            self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])
-            self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6-self.init_time
-            self.endingMovementTime = self.startingMovementTime + 500
+        self.arm.write_time(1500)
+        target_pose = msg.pose.position
+        self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])
+        joints=self.kinematics.ik(self.goal[0],self.goal[1],self.goal[2])
+        if not joints is None:
+            self.arm.write_joints(joints)
+        # if len(self.stowSteps)==0 and not self.isStowed:
+        #     print(["Goal", msg.pose.position])
+        #     target_pose = msg.pose.position
+        #     self.trajMode="task"
+        #     self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])
+        #     self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6-self.init_time
+        #     self.endingMovementTime = self.startingMovementTime + 500
             
-            current_joints = self.arm.read_position()
-            current_pos = self.kinematics.fk(current_joints)
-            current_jac = self.kinematics.vk(current_joints)
-            current_joint_vel = self.arm.read_velocity()
-            current_vel=(current_jac @ np.vstack(current_joint_vel)).flatten()
-            print(current_vel)
-            current_vel=[0,0,0]
-            self.trajCoeff=self.kinematics.generate_trajectory(start=[current_pos[0][3],current_pos[1][3],current_pos[2][3]], end=self.goal, start_vel=current_vel, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
+        #     current_joints = self.arm.read_position()
+        #     current_pos = self.kinematics.fk(current_joints)
+        #     current_jac = self.kinematics.vk(current_joints)
+        #     current_joint_vel = self.arm.read_velocity()
+        #     current_vel=(current_jac @ np.vstack(current_joint_vel)).flatten()
+        #     print(current_vel)
+        #     current_vel=[0,0,0]
+        #     self.trajCoeff=self.kinematics.generate_trajectory(start=[current_pos[0][3],current_pos[1][3],current_pos[2][3]], end=self.goal, start_vel=current_vel, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
         
         
     # Timer callbacks
