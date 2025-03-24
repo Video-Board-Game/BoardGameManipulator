@@ -22,7 +22,6 @@ class ArmNode(Node):
         
 
         
-        
         #storing node start time to shrink the times stored to avoid numerical errors
         self.init_time=self.get_clock().now().nanoseconds*1e-6
         self.startingMovementTime=-1 #time when the trajectory starts
