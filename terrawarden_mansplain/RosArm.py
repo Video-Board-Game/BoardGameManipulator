@@ -9,7 +9,10 @@ from geometry_msgs.msg import PoseStamped
 from terrawarden_interfaces.msg import ArmStatus
 import numpy as np
 import time
-
+GOAL = np.array([0,0,0])
+#GOAL = np.array([0,np.pi/2,-np.pi/2])
+#GOAL = np.array([0,0,-np.pi/2])
+MOVE_TIME = 3*1000
 
 class ArmNode(Node):
     def __init__(self):
@@ -254,7 +257,8 @@ class ArmNode(Node):
             req: The service request (unused).
             resp: The service response (unused).
         """
-        if not self.isStowed:
+        joints = self.arm.read_position()
+        if not self.isStowed and np.pi/2>joints[0]>-np.pi/2:
             self.stowSteps=[["joint", 0, 0, -np.pi/2],
                             ["joint", -31*np.pi/32, 0, -np.pi/2],
                             ["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
@@ -269,7 +273,8 @@ class ArmNode(Node):
             req: The service request (unused).
             resp: The service response (unused).
         """
-        if self.isStowed:
+        joints = self.arm.read_position()
+        if self.isStowed and (np.pi/2<joints[0] or joints[0]<-np.pi/2):
             self.stowSteps=[["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
                             ["joint", -31*np.pi/32, -np.pi/6, -np.pi/2],
                             ["joint", 0, 0, 0]]
@@ -283,6 +288,7 @@ def main(args=None):
     print("Starting arm node")
     # node.arm.reboot()
     node.arm.set_torque(True)
+    node.runJointTrajectory(GOAL[0],GOAL[1],GOAL[2],MOVE_TIME)
     # node.runJointTrajectory(0,-np.pi/2,np.pi/2,3000)
     # node.runJointTrajectory(0,0,0,750)
     # node.runJointTrajectory(-3*np.pi/4,-np.pi/2.1,np.pi/2,3000)
