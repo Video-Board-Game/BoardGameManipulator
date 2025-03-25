@@ -20,8 +20,6 @@ class ArmNode(Node):
         self.arm.set_torque(True)
         self.kinematics = ArmKinematics()
         
-
-        
         #storing node start time to shrink the times stored to avoid numerical errors
         self.init_time=self.get_clock().now().nanoseconds*1e-6
         self.startingMovementTime=-1 #time when the trajectory starts
@@ -61,9 +59,11 @@ class ArmNode(Node):
             10
         )
 
-
+        rclpy.get_default_context().on_shutdown(self.on_shutdown)
     
-        
+    def on_shutdown(self):
+        # Turn off arm when node turn off
+        self.arm.set_torque(False)
 
     # Subscription callbacks
     # def arm_target_callback(self, msg):
@@ -284,7 +284,9 @@ def main(args=None):
     # node.arm.reboot()
     node.arm.set_torque(True)
     # node.runJointTrajectory(0,-np.pi/2,np.pi/2,3000)
-    # node.runJointTrajectory(0,0,0,750)
+    node.runJointTrajectory(0,0,0,2000)
+
+    node.arm.set_torque(False)
     # node.runJointTrajectory(-3*np.pi/4,-np.pi/2.1,np.pi/2,3000)
     # node.runJointTrajectory(0,0,-np.pi/2,1000)
     
