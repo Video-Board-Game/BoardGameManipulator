@@ -5,7 +5,7 @@ class ArmKinematics:
     def __init__(self):
         self.L1 = 0.20375-.02
         self.L2 = np.hypot(.23746,.017)
-        self.L3 = 0.3125+.08
+        self.L3 = 0.25
         self.jointOffset=np.arctan(17/237.46)
         self.jointLims = [
             (-np.pi/2, np.pi/2),
