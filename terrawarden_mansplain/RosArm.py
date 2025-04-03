@@ -31,6 +31,8 @@ class ArmNode(Node):
         self.trajCoeff=np.zeros([3,6])
         self.goal = np.zeros(3) #current goal position
         self.isStowed=False
+        if not -np.pi/2.1 < self.arm.read_position()[0] < np.pi/2: # Check if the arm is in a stowed position at startup
+            self.isStowed = True
         
         self.trajMode="task"
         self.stowSteps=[] # list of steps to run in stowing routine
@@ -46,7 +48,7 @@ class ArmNode(Node):
 
         # Timers
         self.create_timer(0.005, self.run_traj_callback)  # Timer to run the trajectory callback
-        # self.create_timer(2, self.run_stowArm_callback)  # Timer to run the stow arm callback
+        self.create_timer(1, self.run_stowArm_callback)  # Timer to run the stow arm callback
         self.create_timer(0.2, self.publish_status)  # Timer to publish arm status
         
         # Subscriptions
@@ -64,7 +66,7 @@ class ArmNode(Node):
             10
         )
 
-        self.follow_target = False  # Initialize follow_target state
+        self.follow_target = True  # Initialize follow_target state
 
 
         self.create_subscription(
@@ -84,6 +86,10 @@ class ArmNode(Node):
         
 
         self.tracking_offset = .075 # Offset radius to move to before moving to grasp
+        self.move_to_grasp_timer = None  # Initialize the timer for move_to_grasp if needed
+
+        self.arm.set_torque(True) # Ensure torque is enabled for the arm on startup
+        self.arm.set_gripper_torque(True)
 
         rclpy.get_default_context().on_shutdown(self.on_shutdown)
     
@@ -115,16 +121,12 @@ class ArmNode(Node):
         if not self.isStowed :
             self.arm.write_time(500)
             target_pose = msg.pose.position
-            self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])
-            theta = np.arctan2(self.goal[1], self.goal[0]) # Get the angle in radians
-            r = np.sqrt(self.goal[0]**2 + self.goal[1]**2) # Get the radius from the origin to the goal point
-            gx = r - self.tracking_offset * np.cos(theta) # Adjust x to track inward by the offset radius
-            gy = r - self.tracking_offset * np.sin(theta) # Adjust y to track inward by the offset radius
-            joints=self.kinematics.ik(gx,gy,self.goal[2])
+            self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])           
+            joints=self.kinematics.ik(self.goal[0],self.goal[1],self.goal[2])
             if not joints is None:
                 self.arm.write_joints(joints)
             self.follow_target = False  # Stop following the target after moving to grasp
-            threading.Timer(.5,self.arm.close_gripper).start() # Close the gripper after a short delay to ensure the arm is in position
+            self.move_to_grasp_timer=threading.Timer(.5,self.arm.close_gripper).start() # Close the gripper after a short delay to ensure the arm is in position
         
     def arm_traj_callback(self, msg):
         """Callback function for the arm trajectory topic.
@@ -140,10 +142,14 @@ class ArmNode(Node):
             target_pose = msg.pose.position
             self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])
             theta = np.arctan2(self.goal[1], self.goal[0]) # Get the angle in radians
+            print("Theta: ",theta, np.cos(theta)*self.tracking_offset, np.sin(theta)*self.tracking_offset)
             r = np.sqrt(self.goal[0]**2 + self.goal[1]**2) # Get the radius from the origin to the goal point
-            gx = r - self.tracking_offset * np.cos(theta) # Adjust x to track inward by the offset radius
-            gy = r - self.tracking_offset * np.sin(theta) # Adjust y to track inward by the offset radius
+            gx = self.goal[0] - self.tracking_offset * np.cos(theta) # Adjust x to track inward by the offset radius
+            gy = self.goal[1] - self.tracking_offset * np.sin(theta) # Adjust y to track inward by the offset radius
+            print("Goal: ",self.goal)
+            print("Tracking inward to: ", gx, gy, self.goal[2])
             joints=self.kinematics.ik(gx,gy,self.goal[2])
+            print("Calculated joints: ", joints)
             if not joints is None:
                 self.arm.write_joints(joints)
         # if len(self.stowSteps)==0 and not self.isStowed:
@@ -270,10 +276,13 @@ class ArmNode(Node):
         """
 
         self.trajMode="joint"
+        position = self.arm.read_position() # Get the current joint positions
         self.goal = np.array([goal0,goal1,goal2])
+        print("Running joint trajectory from: ",position, " to: ", self.goal)
+        
         self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6-self.init_time
         self.endingMovementTime = self.startingMovementTime + duration_ms
-        self.trajCoeff=self.kinematics.generate_trajectory(self.arm.read_position(), self.goal, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
+        self.trajCoeff=self.kinematics.generate_trajectory(position, self.goal, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
         
 
 
@@ -301,10 +310,10 @@ class ArmNode(Node):
             else:
                 print("Invalid stow step")
     
-        if len(self.stowSteps) > 0:
-            # If there are still steps left, schedule the next call to continue the stow process
-            # Use a timer to ensure it runs after the current callback completes
-            threading.Timer(1, self.run_stowArm_callback).start()
+        # if len(self.stowSteps) > 0:
+        #     # If there are still steps left, schedule the next call to continue the stow process
+        #     # Use a timer to ensure it runs after the current callback completes
+        #     threading.Timer(1, self.run_stowArm_callback).start()
     def stowArm(self,req=None,resp=None):
         """Initiates the stowing sequence if the arm is unstowed.
 
@@ -314,12 +323,12 @@ class ArmNode(Node):
         """
         joints = self.arm.read_position()
         if not self.isStowed and np.pi/2>joints[0]>-np.pi/2:
-            self.stowSteps=[["joint", 0, 0, -np.pi/2],
-                            ["joint", -31*np.pi/32, 0, -np.pi/2],
+            self.stowSteps=[["joint", 0, 0, -np.pi/2.1],
+                            ["joint", -31*np.pi/32, 0, -np.pi/2.1],
                             ["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
                             ["joint", -2*np.pi/3, -np.pi/2.1, np.pi/2.1]]
             
-        self.run_stowArm_callback() # Start the stow process immediately
+        # self.run_stowArm_callback() # Start the stow process immediately
         return resp
         
         
@@ -331,11 +340,11 @@ class ArmNode(Node):
             resp: The service response (unused).
         """
         joints = self.arm.read_position()
-        if self.isStowed and (np.pi/2<joints[0] or joints[0]<-np.pi/2):
+        if self.isStowed and (np.pi/2<joints[0] or joints[0]<-np.pi/2.1):
             self.stowSteps=[["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
-                            ["joint", -31*np.pi/32, -np.pi/6, -np.pi/2],
+                            ["joint", -31*np.pi/32, -np.pi/6, -np.pi/2.1],
                             ["joint", 0, 0, 0]]
-        self.run_stowArm_callback() # Start the unstow process immediately
+        # self.run_stowArm_callback() # Start the unstow process immediately
         return resp
         
 
@@ -343,14 +352,30 @@ def main(args=None):
     # Main entry point
     rclpy.init(args=args)
     node = ArmNode()    
+    
     print("Starting arm node")
+    print(node.isStowed) # Check if the arm is ready to accept commands
+    print(node.follow_target)
+    # print(node.arm.read_gripper_position())
+    t=node.kinematics.fk([0,0,0]) # Test the forward kinematics to ensure it works
+    print("FK for [0,0,0]: ", t) # Print the FK result for debugging
+    dummymsg=PoseStamped()
+    dummymsg.pose.position.x=t[0][3]
+    dummymsg.pose.position.y=t[1][3]
+    dummymsg.pose.position.z=t[2][3]
+    # node.arm_traj_callback(dummymsg) # Call the arm trajectory callback to initialize the arm position
+    node.move_to_grasp_callback(dummymsg) # Call the arm trajectory callback to initialize the arm position
+    # node.arm.close_gripper() # Ensure the gripper is closed at startup to avoid errors
+    # node.arm.open_gripper() # Ensure the gripper is open at startup
+    # print(node.arm.read_position())
+    # node.stowArm()
     # node.arm.reboot()
-    node.arm.set_torque(True)
-    node.runJointTrajectory(GOAL[0],GOAL[1],GOAL[2],MOVE_TIME)
+    # node.arm.set_torque(True)
+    # node.runJointTrajectory(GOAL[0],GOAL[1],GOAL[2],MOVE_TIME)
     # node.runJointTrajectory(0,-np.pi/2,np.pi/2,3000)
-    node.runJointTrajectory(0,0,0,2000)
+    # node.runJointTrajectory(0,0,0,2000)
 
-    node.arm.set_torque(False)
+    # node.arm.set_torque(False)
     # node.runJointTrajectory(-3*np.pi/4,-np.pi/2.1,np.pi/2,3000)
     # node.runJointTrajectory(0,0,-np.pi/2,1000)
     

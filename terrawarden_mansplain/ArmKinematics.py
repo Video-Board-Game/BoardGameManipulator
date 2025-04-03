@@ -52,15 +52,18 @@ class ArmKinematics:
         r=np.sqrt(x**2+y**2)
 
         offset = np.arcsin(self.L4/r) if r>self.L4 else 0 # to avoid singularity when r < L4
-
+        # print("offset: ",offset)
         r = r*np.cos(offset) # adjust r to account for the offset caused by L4
+        initial_theta = np.arctan2(y,x) # initial theta for joint0
+        new_theta = initial_theta - offset # adjust theta to account for the offset caused by L4
+        new__r =r*np.cos(offset)
 
-        joint0[0]=-(np.arctan2(y,x)-offset) # joint0 angle, adjust for L4 offset
+        joint0[0]=-new_theta # joint0 angle, adjust for L4 offset
 
         zc = z+self.L1
 
         
-        r2 = r**2+zc**2
+        r2 = new__r**2+zc**2
 
         
 
