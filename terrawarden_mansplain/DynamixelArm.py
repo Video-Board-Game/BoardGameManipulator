@@ -266,6 +266,22 @@ class DynamixelArm:
             position (int): The target position for the gripper.
         """
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.gripper_ids, [position])
+
+    def open_gripper(self):
+        
+        """
+        Opens the gripper by writing the open position to the gripper.
+        This is a convenience method for writing the gripper's open position.
+        """
+        self.write_gripper(self.gripper_open)
+    
+    def close_gripper(self):
+
+        """
+        Closes the gripper by writing the close position to the gripper.
+        This is a convenience method for writing the gripper's closed position.
+        """
+        self.write_gripper(self.gripper_close)
         
 
     def write_gripper_time(self, time):

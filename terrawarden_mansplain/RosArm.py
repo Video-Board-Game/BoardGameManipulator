@@ -2,13 +2,13 @@ import rclpy
 from rclpy.node import Node
 import rclpy.time
 from std_srvs.srv import Empty
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float64MultiArray, Bool
 from terrawarden_mansplain.DynamixelArm import DynamixelArm  # Import the DynamixelArm class
 from terrawarden_mansplain.ArmKinematics import ArmKinematics  # Import the ArmKinematics class
 from geometry_msgs.msg import PoseStamped
 from terrawarden_interfaces.msg import ArmStatus
 import numpy as np
-import time
+import threading
 GOAL = np.array([0,0,0])
 #GOAL = np.array([0,np.pi/2,-np.pi/2])
 #GOAL = np.array([0,0,-np.pi/2])
@@ -38,13 +38,15 @@ class ArmNode(Node):
         # Publishers
         self.status_publisher = self.create_publisher(ArmStatus, 'arm_status', 10)  # Publisher for arm status
 
+
         # Services
         self.create_service(Empty, 'stow_arm', self.stowArm) #service to stow the arm
         self.create_service(Empty, 'unstow_arm', self.unStowArm) #service to unstow the arm
 
+
         # Timers
         self.create_timer(0.005, self.run_traj_callback)  # Timer to run the trajectory callback
-        self.create_timer(2, self.run_stowArm_callback)  # Timer to run the stow arm callback
+        # self.create_timer(2, self.run_stowArm_callback)  # Timer to run the stow arm callback
         self.create_timer(0.2, self.publish_status)  # Timer to publish arm status
         
         # Subscriptions
@@ -62,6 +64,27 @@ class ArmNode(Node):
             10
         )
 
+        self.follow_target = False  # Initialize follow_target state
+
+
+        self.create_subscription(
+            Bool,
+            'follow_target',
+            self.follow_target_callback,
+            10
+        )
+
+        self.create_subscription(
+            PoseStamped,
+            'move_to_grasp',
+            self.move_to_grasp_callback,
+            10
+        )
+        
+        
+
+        self.tracking_offset = .075 # Offset radius to move to before moving to grasp
+
         rclpy.get_default_context().on_shutdown(self.on_shutdown)
     
     def on_shutdown(self):
@@ -69,15 +92,39 @@ class ArmNode(Node):
         self.arm.set_torque(False)
 
     # Subscription callbacks
-    # def arm_target_callback(self, msg):
-    #     target_pose = msg.pose.position
-    #     self.arm.write_time(2)
-    #     joints = self.kinematics.ik(target_pose.x, target_pose.y, target_pose.z)
-    #     if joints is not None:
-    #         self.arm.write_joints(joints)
-    #     else:
-    #         self.get_logger().error("Invalid IK solution")
-        
+    
+
+    def follow_target_callback(self, msg):
+        """
+        Callback function for the follow_target topic.
+        Updates the follow_target state based on the received boolean message.
+        Args:
+            msg (Bool): The incoming message containing the follow_target state.
+        """
+        self.follow_target = msg.data
+
+    def move_to_grasp_callback(self, msg):
+        """Callback function for the arm trajectory topic.
+        This function processes incoming PoseStamped messages and generates a trajectory for the arm to follow.
+        It checks if the arm is currently unstowed and if so, it generates a trajectory to the specified goal position.
+        Args:
+            msg (PoseStamped): The incoming PoseStamped message containing the target pose.
+        Returns:
+            None
+        """
+        if not self.isStowed :
+            self.arm.write_time(500)
+            target_pose = msg.pose.position
+            self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])
+            theta = np.arctan2(self.goal[1], self.goal[0]) # Get the angle in radians
+            r = np.sqrt(self.goal[0]**2 + self.goal[1]**2) # Get the radius from the origin to the goal point
+            gx = r - self.tracking_offset * np.cos(theta) # Adjust x to track inward by the offset radius
+            gy = r - self.tracking_offset * np.sin(theta) # Adjust y to track inward by the offset radius
+            joints=self.kinematics.ik(gx,gy,self.goal[2])
+            if not joints is None:
+                self.arm.write_joints(joints)
+            self.follow_target = False  # Stop following the target after moving to grasp
+            threading.Timer(.5,self.arm.close_gripper).start() # Close the gripper after a short delay to ensure the arm is in position
         
     def arm_traj_callback(self, msg):
         """Callback function for the arm trajectory topic.
@@ -88,12 +135,17 @@ class ArmNode(Node):
         Returns:
             None
         """
-        self.arm.write_time(1500)
-        target_pose = msg.pose.position
-        self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])
-        joints=self.kinematics.ik(self.goal[0],self.goal[1],self.goal[2])
-        if not joints is None:
-            self.arm.write_joints(joints)
+        if not self.isStowed and self.follow_target:
+            self.arm.write_time(1500)
+            target_pose = msg.pose.position
+            self.goal = np.array([target_pose.x, target_pose.y, target_pose.z])
+            theta = np.arctan2(self.goal[1], self.goal[0]) # Get the angle in radians
+            r = np.sqrt(self.goal[0]**2 + self.goal[1]**2) # Get the radius from the origin to the goal point
+            gx = r - self.tracking_offset * np.cos(theta) # Adjust x to track inward by the offset radius
+            gy = r - self.tracking_offset * np.sin(theta) # Adjust y to track inward by the offset radius
+            joints=self.kinematics.ik(gx,gy,self.goal[2])
+            if not joints is None:
+                self.arm.write_joints(joints)
         # if len(self.stowSteps)==0 and not self.isStowed:
         #     print(["Goal", msg.pose.position])
         #     target_pose = msg.pose.position
@@ -249,7 +301,10 @@ class ArmNode(Node):
             else:
                 print("Invalid stow step")
     
-    
+        if len(self.stowSteps) > 0:
+            # If there are still steps left, schedule the next call to continue the stow process
+            # Use a timer to ensure it runs after the current callback completes
+            threading.Timer(1, self.run_stowArm_callback).start()
     def stowArm(self,req=None,resp=None):
         """Initiates the stowing sequence if the arm is unstowed.
 
@@ -263,6 +318,8 @@ class ArmNode(Node):
                             ["joint", -31*np.pi/32, 0, -np.pi/2],
                             ["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
                             ["joint", -2*np.pi/3, -np.pi/2.1, np.pi/2.1]]
+            
+        self.run_stowArm_callback() # Start the stow process immediately
         return resp
         
         
@@ -278,6 +335,7 @@ class ArmNode(Node):
             self.stowSteps=[["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
                             ["joint", -31*np.pi/32, -np.pi/6, -np.pi/2],
                             ["joint", 0, 0, 0]]
+        self.run_stowArm_callback() # Start the unstow process immediately
         return resp
         
 
