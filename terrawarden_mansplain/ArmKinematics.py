@@ -6,6 +6,7 @@ class ArmKinematics:
         self.L1 = 0.20375-.02
         self.L2 = np.hypot(.23746,.017)
         self.L3 = 0.25
+        self.L4 =.02
         self.jointOffset=np.arctan(17/237.46)
         self.jointLims = [
             (-np.pi/2, np.pi/2),
@@ -17,7 +18,7 @@ class ArmKinematics:
         self.dh_table_const = [
             [0, -self.L1, 0, np.pi/2],
             [-np.pi/2+self.jointOffset, 0, self.L2, 0],
-            [np.pi/2-self.jointOffset, 0, self.L3, -np.pi/2]
+            [np.pi/2-self.jointOffset, -self.L4, self.L3, -np.pi/2]
         ]
 
         
@@ -47,16 +48,21 @@ class ArmKinematics:
     def ik(self,x,y,z):
         
 
-        joint0 = np.zeros(2)
+        joint0 = np.zeros(1)
         r=np.sqrt(x**2+y**2)
 
-        
-        joint0[0]=-np.arctan2(y,x)
-        joint0[1]=np.arctan2(-y,-x)
+        offset = np.arcsin(self.L4/r) if r>self.L4 else 0 # to avoid singularity when r < L4
+
+        r = r*np.cos(offset) # adjust r to account for the offset caused by L4
+
+        joint0[0]=-(np.arctan2(y,x)+offset) # joint0 angle, adjust for L4 offset
 
         zc = z+self.L1
+
         
         r2 = r**2+zc**2
+
+        
 
         joint2 = np.zeros(2)
         d2 = (self.L2**2+self.L3**2-r2)/(2*self.L2*self.L3)
