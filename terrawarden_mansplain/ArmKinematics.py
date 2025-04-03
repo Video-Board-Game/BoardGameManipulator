@@ -55,7 +55,7 @@ class ArmKinematics:
 
         r = r*np.cos(offset) # adjust r to account for the offset caused by L4
 
-        joint0[0]=-(np.arctan2(y,x)+offset) # joint0 angle, adjust for L4 offset
+        joint0[0]=-(np.arctan2(y,x)-offset) # joint0 angle, adjust for L4 offset
 
         zc = z+self.L1
 
@@ -213,6 +213,7 @@ if __name__ == "__main__":
     print(t)
     t = arm.ik(t[0][3],t[1][3],t[2][3])
     print(t)
+    print(np.pi/6)
     # v=arm.vk([0,0,0])
     # print(v)
    
