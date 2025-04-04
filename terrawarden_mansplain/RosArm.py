@@ -17,12 +17,23 @@ GOAL = np.array([0,0,0])
 #GOAL = np.array([0,0,-np.pi/2])
 MOVE_TIME = 3*1000
 
+TIME_PER_STOW_STEP = 1500   # Time in milliseconds for each stow step, used to space out the stow routine
 STOW_ROUTINE_SETPOINTS = [
-    # Stow routine setpoints (type, x, y, z)
-    ["joint", 0, 0, -np.pi/2.1], # Move to a stow position
-    ["joint", -31*np.pi/32, 0, -np.pi/2.1], # Move to a stow position
-    ["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1], # Move to a stow position
-    ["joint", -2*np.pi/3, -np.pi/2.1, np.pi/2.1] # Final stow position
+    # Stow routine setpoints (type, val1, val2, val3)
+    ["joint", 0, 0, -15*np.pi/32], 
+    ["joint", -31*np.pi/32, 0, -15*np.pi/32], 
+    ["joint", -31*np.pi/32, -17*np.pi/32, np.pi/2.1], 
+    ["joint", -20*np.pi/32, -17*np.pi/32, np.pi/2.1],  
+    ["joint", -20*np.pi/32, -np.pi/2.1, np.pi/2.1]   # Final position resting folded on the drone leg
+]
+
+UNSTOW_ROUTINE_SETPOINTS = [
+    # Unstow routine setpoints (type, val1, val2, val3)
+    ["joint", -22*np.pi/32, -15*np.pi/32, 15*np.pi/32], 
+    ["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
+    ["joint", -31*np.pi/32, 0, -np.pi/2.1], 
+    ["joint", 0, 0, -np.pi/2.1],
+    ["joint", 0, 0, 0]  # Final position to ensure the arm is fully unstowed in "L" shape forward
 ]
 
 class ArmNode(Node):
@@ -46,7 +57,7 @@ class ArmNode(Node):
         self.goal = np.zeros(3) #current goal position
        
         self.isStowed=False
-        if not -np.pi/2.1 < self.arm.read_position()[0] < np.pi/2: # Check if the arm is in a stowed position at startup
+        if not self.check_if_arm_stowed(): # Check if the arm is in a stowed position at startup
             # is stowed, snap back to position
             self.isStowed = True
         
@@ -122,8 +133,6 @@ class ArmNode(Node):
         self.get_logger().info("Shutting down arm node")
         self.arm.set_torque(False)
         self.arm.set_gripper_torque(False)
-
-
 
 
     # Subscription callbacks
@@ -347,14 +356,15 @@ class ArmNode(Node):
             # Takes out the next stow step
             step=self.stowSteps.pop(0)
 
-            if self.stowSteps==[]:#changes stow state on last step
+# TODO: better state flipping logic than a toggle at the very end, this is error-prone
+            if self.stowSteps == []:    #changes stow state on last step
                 self.isStowed= not self.isStowed
 
             #sets trajectory based of step type
-            if step[0]=="task": 
-                self.runTaskTrajectory(step[1],step[2],step[3],1000)
-            elif step[0]=="joint":
-                self.runJointTrajectory(step[1],step[2],step[3],1000)
+            if step[0] == "task": 
+                self.runTaskTrajectory(step[1], step[2], step[3], TIME_PER_STOW_STEP)
+            elif step[0] == "joint":
+                self.runJointTrajectory(step[1], step[2], step[3], TIME_PER_STOW_STEP)
             else:
                 self.get_logger().error(f"Unknown stow step type")
     
@@ -369,10 +379,9 @@ class ArmNode(Node):
         Args:
             req: The service request (unused).
             resp: The service response (unused).
-        """
-        joints = self.arm.read_position()
+        """        
         #TODO: better check if arm is stowed and snap to stow position
-        if not self.isStowed and np.pi/2 > joints[0] >-np.pi/2:
+        if self.check_if_arm_stowed():
             self.stowSteps=STOW_ROUTINE_SETPOINTS.copy() 
             
         # self.run_stowArm_callback() # Start the stow process immediately
@@ -386,13 +395,11 @@ class ArmNode(Node):
             req: The service request (unused).
             resp: The service response (unused).
         """
-        joints = self.arm.read_position()
-        if self.isStowed and (np.pi/2 < joints[0] or joints[0] < -np.pi/2.1):
+        if not self.check_if_arm_stowed():
             # self.stowSteps=[["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
             #                 ["joint", -31*np.pi/32, -np.pi/6, -np.pi/2.1],                        
             #                 ["joint", 0, 0, 0]]
-            self.stowSteps=STOW_ROUTINE_SETPOINTS.copy()
-            self.stowSteps.reverse() 
+            self.stowSteps=UNSTOW_ROUTINE_SETPOINTS.copy()        
         # self.run_stowArm_callback() # Start the unstow process immediately
         return resp
         
@@ -438,11 +445,11 @@ def main(args=None):
     # node.stowArm()
     
     try:
-        # import time
-        # node.arm.stow_gripper()
-        # node.unStowArm()
-        # time.sleep(8)
-        # node.stowArm()
+        import time
+        node.arm.stow_gripper()
+        node.unStowArm()
+        time.sleep(8)
+        node.stowArm()
         rclpy.spin(node)
     except:
         node.on_shutdown_()    
