@@ -17,24 +17,31 @@ GOAL = np.array([0,0,0])
 #GOAL = np.array([0,0,-np.pi/2])
 MOVE_TIME = 3*1000
 
-TIME_PER_STOW_STEP = 1500   # Time in milliseconds for each stow step, used to space out the stow routine
+TIME_PER_STOW_STEP = 1000   # Time in milliseconds for each stow step, used to space out the stow routine
+TIME_PER_TRAJ_STEP = 1000   # Time in milliseconds for each stow step, used to space out the stow routine
 STOW_ROUTINE_SETPOINTS = [
     # Stow routine setpoints (type, val1, val2, val3)
-    ["joint", 0, 0, -15*np.pi/32], 
-    ["joint", -31*np.pi/32, 0, -15*np.pi/32], 
-    ["joint", -31*np.pi/32, -17*np.pi/32, np.pi/2.1], 
-    ["joint", -20*np.pi/32, -17*np.pi/32, np.pi/2.1],  
-    ["joint", -20*np.pi/32, -np.pi/2.1, np.pi/2.1]   # Final position resting folded on the drone leg
+    ["joint", 0, 0, -17*np.pi/32], 
+    ["joint", -31*np.pi/32, 0, -17*np.pi/32], 
+    ["joint", -31*np.pi/32, -17*np.pi/32, 17*np.pi/32], 
+    ["joint", -19*np.pi/32, -17*np.pi/32, 17*np.pi/32],  
+    ["joint", -19*np.pi/32, -17*np.pi/32, 17*np.pi/32]   # Final position resting folded on the drone leg
 ]
 
 UNSTOW_ROUTINE_SETPOINTS = [
     # Unstow routine setpoints (type, val1, val2, val3)
-    ["joint", -22*np.pi/32, -15*np.pi/32, 15*np.pi/32], 
-    ["joint", -31*np.pi/32, -np.pi/2.1, np.pi/2.1],
-    ["joint", -31*np.pi/32, 0, -np.pi/2.1], 
-    ["joint", 0, 0, -np.pi/2.1],
+    ["joint", -19*np.pi/32, -17*np.pi/32, 17*np.pi/32], 
+    ["joint", -31*np.pi/32, -17*np.pi/32, 17*np.pi/32],
+    ["joint", -31*np.pi/32, 0, -17*np.pi/32], 
+    ["joint", 0, 0, -17*np.pi/32],
     ["joint", 0, 0, 0]  # Final position to ensure the arm is fully unstowed in "L" shape forward
 ]
+
+from enum import Enum
+class TrajectoryModes(Enum):
+    JOINT_SPACE = "joint"
+    TASK_SPACE = "task"
+    STOW_UNSTOW = "stow"
 
 class ArmNode(Node):
     def __init__(self):
@@ -53,7 +60,7 @@ class ArmNode(Node):
         self.startingMovementTime=-1 #time when the trajectory starts
         self.endingMovementTime=-1 #time when the trajectory ends
 
-        self.trajCoeff=np.zeros([3,6])
+        self.traj_coeffs=np.zeros([3,6])
         self.goal = np.zeros(3) #current goal position
        
         self.isStowed=False
@@ -61,8 +68,8 @@ class ArmNode(Node):
             # is stowed, snap back to position
             self.isStowed = True
         
-        # TODO: Make this an enum bc it lists what all the options are
-        self.trajMode="task"
+        self.trajMode = TrajectoryModes.TASK_SPACE
+
         # TODO: Why not just set all trajectories to use one array
         #       and then have a main loop that processes it rather than just using setpoints
         #       this is actually just way worse than 3001 code -K
@@ -78,6 +85,7 @@ class ArmNode(Node):
 
 
         # Timers
+        # TODO Ew what -K
         self.create_timer(0.005, self.run_traj_callback)  # Timer to run the trajectory callback
         self.create_timer(1, self.run_stowArm_callback)  # Timer to run the stow arm callback
         self.create_timer(0.2, self.publish_status)  # Timer to publish arm status
@@ -218,8 +226,13 @@ class ArmNode(Node):
         Returns:
             None
         """
+
+        ### TODO: NO GUARANTEE THAT ARM IS AT RIGHT POSITION AT ANY POINT
+        ### TODO: NO GUARANTEE ARM IS DONE MOVING AT self.endingMovementTime
+
         # Check if the trajectory is still running
         if self.get_clock().now().nanoseconds*1e-6-self.init_time<self.endingMovementTime:
+            ### TODO: This is dumb - arm has a maximum velocity that this should be based on
             self.arm.write_time(0.08)#makes sure movements are fast
             t=self.get_clock().now().nanoseconds*1e-6-self.init_time
             a=0
@@ -227,11 +240,11 @@ class ArmNode(Node):
             c=0
             #calculates the points within the trajectory whether joint or task
             for i in range(6):
-                a+=self.trajCoeff[0][i]*t**i
-                b+=self.trajCoeff[1][i]*t**i
-                c+=self.trajCoeff[2][i]*t**i
+                a+=self.traj_coeffs[0][i]*t**i
+                b+=self.traj_coeffs[1][i]*t**i
+                c+=self.traj_coeffs[2][i]*t**i
             #if task mode, calculates the joint angles using inverse kinematics
-            if self.trajMode=="task":
+            if self.trajMode==TrajectoryModes.TASK_SPACE:
                 joints = self.kinematics.ik(a,b,c)
             else:
                 joints = np.array([a,b,c])
@@ -295,13 +308,13 @@ class ArmNode(Node):
             None
         """
         
-        self.trajMode="task"
+        self.trajMode = TrajectoryModes.TASK_SPACE
         self.goal = np.array([goalx,goaly,goalz])
         self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6 - self.init_time
         self.endingMovementTime = self.startingMovementTime + duration_ms
         currentFk = self.arm.fk(self.arm.read_position())
         currrntPos=np.array([currentFk[0][3],currentFk[1][3],currentFk[2][3]]) # Get the current end-effector position
-        self.trajCoeff=self.kinematics.generate_trajectory(currrntPos, self.goal, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
+        self.traj_coeffs=self.kinematics.generate_trajectory(currrntPos, self.goal, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
 
 
     def runJointTrajectory(self, goal0,goal1,goal2,duration_ms):
@@ -319,14 +332,14 @@ class ArmNode(Node):
             None
         """
 
-        self.trajMode="joint"
+        self.trajMode = TrajectoryModes.JOINT_SPACE
         position = self.arm.read_position() # Get the current joint positions
         self.goal = np.array([goal0,goal1,goal2])
         self.get_logger().info(f"Running joint trajectory from: {position} to: {self.goal}") # Log the trajectory for debugging
         
         self.startingMovementTime=self.get_clock().now().nanoseconds*1e-6-self.init_time
         self.endingMovementTime = self.startingMovementTime + duration_ms
-        self.trajCoeff=self.kinematics.generate_trajectory(position, self.goal, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
+        self.traj_coeffs=self.kinematics.generate_trajectory(position, self.goal, start_time=self.startingMovementTime,end_time=self.endingMovementTime)
         
 
 
@@ -403,6 +416,107 @@ class ArmNode(Node):
         # self.run_stowArm_callback() # Start the unstow process immediately
         return resp
         
+    ### ------------------ KAY ARCHITECTURE CHANGES ----------------------
+    #              See comment in loop() (below) for more info
+
+    def update_trajectory_position(self):
+        """Runs the trajectory for the arm based on the current mode (task or joint).
+        This function checks if the current time is within the trajectory duration and updates the arm's position accordingly.
+        If the trajectory is in task mode, it calculates the joint angles using inverse kinematics.
+        If the trajectory is in joint mode, it directly sets the joint angles.
+        Args:
+            None
+        Returns:
+            None
+        """       
+        # arm.write_time(short) incentivises the arm to travel as fast as possible to the 
+        # intermediatetrajectory positions, which allows for smooth following. 
+        # However, loop() updates at 10Hz, 
+        # so any faster would be unnecessary and perhaps beyond the arm's capabilities
+        self.arm.write_time(0.1)
+
+        t=self.get_clock().now().nanoseconds*1e-6-self.init_time
+
+        if t > TIME_PER_TRAJ_STEP:
+            self.get_logger().warn(f"Trajectory has exceeded normal motion time! t = {t} seconds")
+            return
+        
+        # temp variables which store the trajectory equation output
+        a=0
+        b=0
+        c=0
+        # Reminder to the reader that self.traj_coeffs are the coefficients for a quintic trajectory
+        for i in range(6):
+            a += self.traj_coeffs[0][i]*t**i
+            b += self.traj_coeffs[1][i]*t**i
+            c += self.traj_coeffs[2][i]*t**i
+        #if task mode, calculates the joint angles using inverse kinematics
+        if self.trajMode==TrajectoryModes.TASK_SPACE:
+            joints = self.kinematics.ik(a,b,c)
+        else:
+            # Both TrajectoryModes.JOINT_SPACE and TrajectoryModes.STOW use joint space motions
+            joints = np.array([a,b,c])
+        # print("ABC: ",a,b,c)
+        # print("Joints: ",joints)
+        if joints is not None and self.kinematics.check_move_safe(joints):
+            self.arm.write_joints(joints)
+
+
+    def loop(self):
+        """
+            I don't want to fully implement this before I get the okay from the team
+            but the idea of this function is to be a primary control loop (instead of the 2? 3? that Sam has)
+            which would control all motions (including stow) all in one place
+            The above function (update_trajectory_position) is a cleaned up version of run_traj_callback.
+            Overall, this node is full of edge cases, sloppy code, and race conditions, and needs help
+            I am happy to take charge and do a lot of this myself, I just don't want to completely overstep
+            Feel free to ask me if you have any questions
+            
+            Thanks, - Kay
+        """
+        # This queue would store a series of setpoints that the arm would loop through,
+        # Set by callbacks asynchronously
+        # Normal go_to_point callbacks would clear the queue before setting a new setpoint
+        # But stow/unstow/more complex motion could be set using this queue setup
+        self.setpoint_queue = []
+
+        if len(self.setpoint_queue) > 0:
+            
+            if self.traj_running:
+                # Preconditions: 
+                # - Trajectory is running
+                # - Trajectory variables are set properly from below (they shouldn't be set elsewhere)
+
+                # Handle all updates to the arm position from the trajectory
+                self.update_trajectory_position()
+
+            # Get current setpoint target
+            next_setpoint = self.setpoint_queue[0]
+
+            # Read current arm position
+            current_joint_positions = self.arm.read_position()
+
+            # Check if arm is in next_setpoint
+            in_position = True
+            for i in range(len(current_joint_positions)):
+                # If *any* joint is out of the tolerance, the arm is not in position
+                if abs(current_joint_positions[i] - next_setpoint[i]) < self.joint_tolerance:
+                    in_position = False
+            
+            # If the arm is in_position (or no trajectory has begun), iterate to next setpoint
+            if in_position or not self.traj_running:
+                self.setpoint_queue.pop(0)
+                # Set new trajectory coeffs
+                self.traj_coeffs = self.kinematics.generate_trajectory(
+                    start     = current_joint_positions,
+                    end       = next_setpoint,
+                    start_vel = self.arm.read_velocity(),
+                    start_time= 0,
+                    end_time  = TIME_PER_TRAJ_STEP)
+                self.traj_running = True
+        else:
+            # if the queue is empty, then no trajectory is running
+            self.traj_running = False
 
 def main(args=None):
     # Main entry point
