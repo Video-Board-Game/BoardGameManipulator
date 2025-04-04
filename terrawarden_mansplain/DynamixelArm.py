@@ -81,17 +81,18 @@ DXL_ZERO_POSITION = 2048        # Zero position value
 DXL_CONVERTION_FACTOR = 651.898646904 # Convertion factor from radians to encoder units
 DXL_MOVING_STATUS_THRESHOLD = 20  # Threshold for position error
 
-GRIPPER_OPEN = 1024
-GRIPPER_CLOSE = 3072
+# gripper positions in encoder ticks
+GRIPPER_OPEN = 3072
+GRIPPER_CLOSE = 1024
+GRIPPER_STOW = 1600 # barely closed for transport, but without risk of overheating
 
 class DynamixelArm:
     def __init__(self):
         os_name = platform.system()
-        deviceName="/dev/ttyACM0"
+        deviceName=DEVICENAME
         if os_name == "Windows":
             deviceName = "COM5"
        
-        
         self.port_handler = dxl.PortHandler(deviceName)
         self.packet_handler = dxl.PacketHandler(2.0)
         self.group_bulk_read = dxl.GroupBulkRead(self.port_handler, self.packet_handler)
@@ -105,11 +106,12 @@ class DynamixelArm:
         self.motor_ids = [10, 11, 12]
         self.gripper_ids = [13]
 
-        self.bulk_write(108,4,self.gripper_ids,[200])
-        self.bulk_write(112,4,self.gripper_ids,[200])
-        self.gripper_open = 2950
-        self.gripper_close = 1750
-        self.gripper_coke = 2572
+        # write profile acceleration limit to gripper servo in revolutions per minute squared
+        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION,LEN_MX_PROFILE_ACCELERATION,self.gripper_ids,[200])
+        # write profile velocity limit to gripper servo in revolutions per minute
+        self.bulk_write(ADDR_MX_PROFILE_VELOCITY,LEN_MX_PROFILE_VELOCITY,self.gripper_ids,[200])
+        # write gipper current to medium of the byte
+        self.bulk_write(ADDR_MX_CURRENT, LEN_MX_CURRENT,self.gripper_ids,[128])
 
         # self.bulk_write(ADDR_MX_OPERATING_MODE,LEN_MX_OPERATING_MODE,self.motor_ids,[OP_MODE_EXPOS for i in self.motor_ids])
 
@@ -273,7 +275,7 @@ class DynamixelArm:
         Opens the gripper by writing the open position to the gripper.
         This is a convenience method for writing the gripper's open position.
         """
-        self.write_gripper(self.gripper_open)
+        self.write_gripper(GRIPPER_OPEN)
     
     def close_gripper(self):
 
@@ -281,7 +283,14 @@ class DynamixelArm:
         Closes the gripper by writing the close position to the gripper.
         This is a convenience method for writing the gripper's closed position.
         """
-        self.write_gripper(self.gripper_close)
+        self.write_gripper(GRIPPER_CLOSE)
+
+    def stow_gripper(self):
+        """
+        Mover the gripper by writing the stow position to the gripper.
+        This is a convenience method for writing the gripper's swot position.
+        """
+        self.write_gripper(GRIPPER_STOW)
         
 
     def write_gripper_time(self, time):
@@ -291,6 +300,7 @@ class DynamixelArm:
             time (float): The time in seconds for the profile velocity and acceleration.
         """
         time_ms = int(time*1000)
+        # Trapezoidal profiling - equal time spent accelerating, decelerating, and at max speed
         acc_time_ms = int(time_ms/3)
 
         self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.gripper_ids,[time_ms])
@@ -311,16 +321,3 @@ class DynamixelArm:
 if __name__ == "__main__":
     
     arm = DynamixelArm()
-    arm.set_gripper_torque(1)
-    arm.write_gripper(arm.gripper_close)
-    # arm.write_gripper(arm.gripper_open)
-    # time.sleep(1)
-    # arm.write_gripper(arm.gripper_coke)
-    # # arm.set_torque(TORQUE_DISABLE)
-    # arm.close()
-    
-    
-    
-
-
-
