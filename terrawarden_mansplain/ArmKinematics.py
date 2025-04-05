@@ -25,6 +25,12 @@ class ArmKinematics:
 
 
     def dh2mat(self, joint_val,row):
+        """
+        Convert Denavit-Hartenberg parameters to a transformation matrix.
+        :param joint_val: The joint value for the current joint (theta).
+        :param row: The Denavit-Hartenberg parameters [theta, d, a, alpha] for the current joint.
+        :return: A 4x4 transformation matrix representing the transformation from the current joint to the next joint.
+        """
         theta= joint_val+row[0]
         d=row[1]
         a=row[2]
@@ -37,16 +43,21 @@ class ArmKinematics:
         ])
     
     def fk(self,joints):
+        """
+        Forward kinematics for the arm, calculates the transformation matrix from base to end-effector given joint values.
+        :param joints: A list or array of joint values [joint0, joint1, joint2]
+        :return: A 4x4 transformation matrix representing the position and orientation of the end-effector in the base frame.
+        """
         T = np.eye(4)
         for i in range(3):
             dir = 1
             if i == 0:
-                dir = -1
+                dir = -1#to account for joint0 being flipped since we arent using symbolic DH parameters
             T = T @ self.dh2mat(dir*joints[i],self.dh_table_const[i])
         return T
     
     def ik(self,x,y,z):
-        
+        """Calculate the inverse kinematics for the given x, y, z position."""
 
         joint0 = np.zeros(1)
         r=np.sqrt(x**2+y**2)
@@ -60,19 +71,20 @@ class ArmKinematics:
 
         joint0[0]=-new_theta # joint0 angle, adjust for L4 offset
 
+        # Now we can proceed with joint1 and joint2 calculations
+
+        # Recenter to RZ plane origin at joint1 base
         zc = z+self.L1
-
-        
         r2 = new__r**2+zc**2
-
         
-
+        #lay of cosines for joint2
         joint2 = np.zeros(2)
         d2 = (self.L2**2+self.L3**2-r2)/(2*self.L2*self.L3)
         c2 = np.sqrt(1-d2**2)
         joint2[0]=np.pi/2+self.jointOffset-np.arctan2(c2,d2)
         joint2[1]=np.pi/2+self.jointOffset-np.arctan2(-c2,d2)
 
+        # finding alpha and beta for joint1
         dbeta = (self.L2**2+r2-self.L3**2)/(2*self.L2*np.sqrt(r2))
         cbeta = np.sqrt(1-dbeta**2)       
         beta=np.zeros(2)
@@ -91,7 +103,7 @@ class ArmKinematics:
         joint1[2]=alpha[1]-self.jointOffset-beta[0]
         joint1[3]=alpha[1]-self.jointOffset-beta[1]
 
-
+        # Verifying combinations to find correct combinations since with Atan2 to find potential negative angles acos wouldnt
         validAnswer= False
         validJoints = np.zeros(3)
         for i in range(4):
@@ -124,56 +136,45 @@ class ArmKinematics:
 
 
     def vk(self,joint_val):
-        l2=self.L2
-        l3=self.L3
-        theta1=-joint_val[0]
-        theta2=joint_val[1]
-        theta3=joint_val[2]
-        t2 = np.cos(theta1)
-        t3 = np.sin(theta1)
+        """
+        Velocity kinematics for the arm, returns the jacobian matrix for the given joint values.
+        Generated in matlab using symbolic tool box in vkGeneration.m then translated to python using CoPilot.
+        :param joint_val: A list or array of joint values [joint0, joint1, joint2]
+        :return: The Jacobian matrix (3x3) for the given joint values.
+        """
+        tht1, tht2, tht3 = joint_val
+        t2 = np.cos(tht1)
+        t3 = np.sin(tht1)
         t4 = np.pi / 2.0
         t5 = -t4
-        t7 = t4 + theta3 - 7.146907175572792e-2
-        t6 = t5 + theta2 + 7.146907175572792e-2
+        t7 = t4 + tht3 - 7.146907175572792e-2
+        t6 = t5 + tht2 + 7.146907175572792e-2
         t9 = np.cos(t7)
         t11 = np.sin(t7)
         t8 = np.cos(t6)
         t10 = np.sin(t6)
-        t12 = t8 * t11
-        t13 = t9 * t10
-        t14 = l3 * t8 * t9
-        t15 = l3 * t10 * t11
-        t16 = t2 * t8 * t9
-        t17 = t3 * t8 * t9
-        t18 = t2 * t10 * t11
-        t19 = t3 * t10 * t11
-        t20 = -t12
-        t21 = -t13
-        t22 = l3 * t2 * t12
-        t23 = l3 * t2 * t13
-        t24 = l3 * t3 * t12
-        t25 = l3 * t3 * t13
-        t26 = -t15
-        t27 = -t16
-        t28 = -t17
-        t29 = l3 * t2 * t20
-        t30 = l3 * t2 * t21
-        t31 = l3 * t3 * t20
-        t32 = l3 * t3 * t21
-        t33 = t20 + t21
-        t34 = t18 + t27
-        t35 = t19 + t28
-        
-        jac = np.array([
-            [-t3 * t14 + t3 * t15 - l2 * t3 * t8, t2 * t14 + t2 * t26 + l2 * t2 * t8, 0.0],
-            [t3 * t12 + t3 * t13, t2 * t20 + t2 * t21, 0.0],
-            [t29 + t30 - l2 * t2 * t10, t31 + t32 - l2 * t3 * t10, t14 + t26 + l2 * t8],
-            [t34, t35, t33],
-            [t29 + t30, t31 + t32, t14 + t26],
-            [t34, t35, t33]
-        ])
-        
-        return jac
+        t12 = (t8 * t9) / 4.0
+        t13 = (t10 * t11) / 4.0
+        t15 = (t2 * t8 * t11) / 4.0
+        t16 = (t2 * t9 * t10) / 4.0
+        t17 = (t3 * t8 * t11) / 4.0
+        t18 = (t3 * t9 * t10) / 4.0
+        t14 = -t13
+        t19 = -t15
+        t20 = -t16
+        mt1 = [
+            t2 / 50.0 - t3 * t8 * 2.380677458203862e-1 + t3 * t13 - (t3 * t8 * t9) / 4.0,
+            t3 * (-1.0 / 50.0) - t2 * t8 * 2.380677458203862e-1 + t2 * t13 - (t2 * t8 * t9) / 4.0,
+            0.0,
+            t19 + t20 - t2 * t10 * 2.380677458203862e-1,
+            t17 + t18 + t3 * t10 * 2.380677458203862e-1,
+            t8 * 2.380677458203862e-1 + t12 + t14,
+            t19 + t20,
+            t17 + t18,
+            t12 + t14,
+        ]
+        jakubian = np.reshape(mt1, (3, 3)) @ np.vstack(joint_val)  # Reshape to 3x3 and multiply by joint_val to get the velocity jacobian
+        return jakubian
     
     def generate_trajectory(self, start, end, start_vel=[0,0,0], start_time=0, end_time=1):
         # TODO: MAKE THIS FUNCTION ACCOUNT FOR THE ARM'S MAX VELOCITY
