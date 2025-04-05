@@ -173,7 +173,7 @@ class ArmKinematics:
             t17 + t18,
             t12 + t14,
         ]
-        jakubian = np.reshape(mt1, (3, 3)) @ np.vstack(joint_val)  # Reshape to 3x3 and multiply by joint_val to get the velocity jacobian
+        jakubian = np.reshape(mt1, (3, 3))   # Reshape to 3x3 
         return jakubian
     
     def generate_trajectory(self, start, end, start_vel=[0,0,0], start_time=0, end_time=1):
@@ -215,6 +215,9 @@ class ArmKinematics:
 
 if __name__ == "__main__":
     arm = ArmKinematics()
+    print("Testing Arm Kinematics")
+    print("FK: ",arm.fk([0,0,0]))
+    print("VK: ",arm.vk([0,0,0]))
     # t = arm.fk([np.pi/6,0,0])
     # print(t)
     # t = arm.ik(t[0][3],t[1][3],t[2][3])
