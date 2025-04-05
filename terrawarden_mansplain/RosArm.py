@@ -18,30 +18,26 @@ GOAL = np.array([0,0,0])
 MOVE_TIME = 3*1000
 
 # Time in milliseconds for each step, used to space out multi-step routines
-TIME_PER_TRAJ_STEP = 2000 
+TIME_PER_TRAJ_STEP = 1200 
 
-TIME_PER_STOW_STEP = 5000  
-# STOW_ROUTINE_SETPOINTS = [
-#     # Stow routine setpoints (type, val1, val2, val3)
-#     ["joint", 0, 0, -17*np.pi/32], 
-#     ["joint", -31*np.pi/32, 0, -17*np.pi/32], 
-#     ["joint", -31*np.pi/32, -17*np.pi/32, 17*np.pi/32], 
-#     ["joint", -19*np.pi/32, -17*np.pi/32, 17*np.pi/32],  
-#     ["joint", -19*np.pi/32, -17*np.pi/32, 17*np.pi/32]   # Final position resting folded on the drone leg
-# ]
-UNSTOW_ROUTINE_SETPOINTS = [
-    # Unstow routine setpoints (type, val1, val2, val3)
-    ["joint", -19*np.pi/32, -17*np.pi/32, 17*np.pi/32], 
-    ["joint", -31*np.pi/32, -17*np.pi/32, 17*np.pi/32],
-    ["joint", -31*np.pi/32, 0, -17*np.pi/32], 
-    ["joint", 0, 0, -17*np.pi/32],
-    ["joint", 0, 0, 0]  # Final position to ensure the arm is fully unstowed in "L" shape forward
-]
-
+TIME_PER_STOW_STEP = 1250  # tuned for not much drone jerk
 STOW_ROUTINE_SETPOINTS = [
     # Stow routine setpoints (type, val1, val2, val3)
-    ["joint", -0.2, -17*np.pi/32, 17*np.pi/32],
-    ["joint", -0.2, -0.1, 0],
+    ["joint", 0, 0, -17*np.pi/32], 
+    ["joint", -31*np.pi/32, 0, -17*np.pi/32], # rotate straight down so as not to obstruct the drone optical flow
+    ["joint", -30*np.pi/32, -17*np.pi/32, 16*np.pi/32],  # fold upwards base joint back
+    ["joint", -19*np.pi/32, -17*np.pi/32, 16*np.pi/32],  
+    ["joint", -19*np.pi/32, -14*np.pi/32, 16*np.pi/32]   # Final position resting folded on the drone leg
+]
+UNSTOW_ROUTINE_SETPOINTS = [
+    # Unstow routine setpoints (type, val1, val2, val3)
+    ["joint", -19*np.pi/32, -14*np.pi/32, 16*np.pi/32], # stow position, then unstow basically backwards
+    ["joint", -19*np.pi/32, -17*np.pi/32, 16*np.pi/32],  
+    ["joint", -31*np.pi/32, -17*np.pi/32, 16*np.pi/32],    
+    ["joint", -31*np.pi/32, 3*np.pi/32, -14*np.pi/32],
+    ["joint", -31*np.pi/32, 0*np.pi/32, -17*np.pi/32],
+    ["joint", 0, 0*np.pi/32, -12*np.pi/32], # make the massive swing slower    
+    ["joint", 0, 0, 0]  # Final position to ensure the arm is fully unstowed in "L" shape forward
 ]
 
 from enum import Enum
@@ -352,8 +348,8 @@ class ArmNode(Node):
         self.traj_coeffs=self.kinematics.generate_trajectory(position, self.goal, start_time=self.startingMovementTimeSec,end_time=self.endingMovementTimeSec)
 
 # TODO: this line I beliee should be there onlz once, otherwise it breaks stuff with too much bandwidth
-        # self.arm.write_time(0.01)#makes sure movements are fast
-        # this function is depracated as IT IS LITERALLY WRONG, SAM READ THE FU**ING DOCS AT LEAST ONCE PLEASE
+        self.arm.write_time(0.08)#makes sure movements are fast
+        # this function is depracated as it does not behave as expected, when smaller number should be faster, not always
         
 
 
@@ -614,8 +610,7 @@ def main(args=None):
     try:
         import time
         node.arm.stow_gripper()
-        node.unStowArm()
-        time.sleep(4)
+        node.unStowArm()        
         node.stowArm()
         # node.runJointTrajectory(0, 0, -17*np.pi/32, 3000) # Move to a stowed position
         rclpy.spin(node)
