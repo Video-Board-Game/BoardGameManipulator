@@ -15,7 +15,7 @@ Constants:
     TORQUE_ENABLE, TORQUE_DISABLE: Constants to enable or disable motor torque.
     OP_MODE_*: Operating modes for the motors.
     DXL_ZERO_POSITION: Encoder value corresponding to the zero position of the motor.
-    DXL_CONVERTION_FACTOR: Conversion factor from radians to encoder units.
+    DXL_POSITION_FACTOR: Conversion factor from radians to encoder units.
     DXL_MOVING_STATUS_THRESHOLD: Threshold for position error to determine if the motor is moving.
     GRIPPER_OPEN, GRIPPER_CLOSE: Encoder values for the gripper's open and closed positions.
 Class Methods:
@@ -42,23 +42,27 @@ import time
 import platform 
 # Control table address
 ADDR_MX_OPERATING_MODE = 11         # Address for operating mode
+ADDR_MX_DRIVER_MODE = 10          # Address for driver mode 
 ADDR_MX_TORQUE_ENABLE = 64         # Address for enabling torque
 ADDR_MX_GOAL_POSITION = 116         # Address for setting goal position
 ADDR_MX_PRESENT_POSITION = 132      # Address for reading current position
 ADDR_MX_PRESENT_VELOCITY = 128      # Address for reading current velocity
 ADDR_MX_PROFILE_VELOCITY = 112      # Address for setting profile velocity
 ADDR_MX_PROFILE_ACCELERATION = 108  # Address for setting profile acceleration
-ADDR_MX_CURRENT =126
+ADDR_MX_PRESENT_CURRENT = 126 # Address for reading current (only available on some models like XL330 and XM430)
+ADDR_MX_GOAL_CURRENT = 102 # Address for setting goal current (only available on some models like XL330 and XM430)
 
 # Data Byte Length
 LEN_MX_OPERATING_MODE = 1
+LEN_MX_DRIVER_MODE = 1 
 LEN_MX_TORQUE_ENABLE = 1
 LEN_MX_GOAL_POSITION = 4
 LEN_MX_PRESENT_POSITION = 4
 LEN_MX_PRESENT_VELOCITY = 4
 LEN_MX_PROFILE_VELOCITY = 4
 LEN_MX_PROFILE_ACCELERATION = 4
-LEN_MX_CURRENT = 2
+LEN_MX_PRESENT_CURRENT = 2
+LEN_MX_GOAL_CURRENT = 2 
 
 
 # Protocol version
@@ -69,32 +73,44 @@ PROTOCOL_VERSION = 2.0  # Check your Dynamixel model's protocol version
 BAUDRATE = 1000000         # Dynamixel baudrate
 
 DEVICENAME = '/dev/ttyACM0'  # Port (Update according to your system)
+WINDOWS_DEVICENAME = 'COM5' # Windows port, if using windows change this to the correct port
 
 TORQUE_ENABLE = 1        # Enable torque
 TORQUE_DISABLE = 0       # Disable torque
 
-OP_MODE_VEL = 1
-OP_MODE_POS = 3
-OP_MODE_EXPOS = 4
+OP_MODE_VEL = 1 # Velocity control mode, not used in this case for the arm joints
+OP_MODE_POS = 3 # Position control mode, this is used for the arm joints in this case
+OP_MODE_EXPOS = 4 # Extended Position Mode, useful if rotating beyond 360 degrees, but not used in this case
+OP_MODE_CURPOS = 5 # Current-Based Position mode, this is used for the gripper in this case
 
 DXL_ZERO_POSITION = 2048        # Zero position value
-DXL_CONVERTION_FACTOR = 651.898646904 # Convertion factor from radians to encoder units
+DXL_POSITION_FACTOR = 651.898646904 # Conversion factor from radians to encoder units
 DXL_MOVING_STATUS_THRESHOLD = 20  # Threshold for position error
+DXL_VELOCITY_FACTOR = 41.6999850896 #1/(0.229 * (2 * np.pi) / 60)  # Conversion factor from 1 [rad/s] to 0.229 [rev/min]  
+DXL_ACCELERATION_FACTOR = 2.67017338825 # 1/(214.577 * (2 * np.pi) / 3600)  # Conversion factor from 1 [rad/s^2] to 214.577 [rev/min^2]
+
+DXL_DRIVE_MODE_VELOCITY = 0b00000000 # Velocity profile drive mode
+DXL_DRIVE_MODE_TIME = 0b00000100 # Time based profile drive mode, unused in this case
 
 # gripper positions in encoder ticks
 GRIPPER_OPEN = 3072
 GRIPPER_CLOSE = 1024
 GRIPPER_STOW = 1600 # barely closed for transport, but without risk of overheating
 
+ARM_PROFILE_VELOCITY = 2*np.pi # radians/sec, this is the desired velocity for the arm joints
+ARM_PROFILE_ACCELERATION = np.pi # radians/sec^2, this is the desired acceleration for the arm joints
+GRIPPER_OPEN_PROFILE_VELOCITY = 2*np.pi # radians/sec, this is the desired velocity for the gripper
+GRIPPER_OPEN_PROFILE_ACCELERATION = np.pi # radians/sec^2, this is the desired acceleration for the gripper
+
 class DynamixelArm:
     def __init__(self):
         os_name = platform.system()
         deviceName=DEVICENAME
         if os_name == "Windows":
-            deviceName = "COM5"
+            deviceName = WINDOWS_DEVICENAME
        
         self.port_handler = dxl.PortHandler(deviceName)
-        self.packet_handler = dxl.PacketHandler(2.0)
+        self.packet_handler = dxl.PacketHandler(PROTOCOL_VERSION)
         self.group_bulk_read = dxl.GroupBulkRead(self.port_handler, self.packet_handler)
         self.group_bulk_write = dxl.GroupBulkWrite(self.port_handler, self.packet_handler)
 
@@ -106,22 +122,36 @@ class DynamixelArm:
         self.motor_ids = [10, 11, 12]
         self.gripper_ids = [13]
 
-        # write profile acceleration limit to gripper servo in revolutions per minute squared
-        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION,LEN_MX_PROFILE_ACCELERATION,self.gripper_ids,[200])
-        # write profile velocity limit to gripper servo in revolutions per minute
-        self.bulk_write(ADDR_MX_PROFILE_VELOCITY,LEN_MX_PROFILE_VELOCITY,self.gripper_ids,[200])
-        # write gipper current to medium of the byte
-        self.bulk_write(ADDR_MX_CURRENT, LEN_MX_CURRENT,self.gripper_ids,[128]) 
         
-        # globally set the arm servoes acceleration and velocity limits
-        # self.bulk_write(ADDR_MX_PROFILE_ACCELERATION,LEN_MX_PROFILE_ACCELERATION,self.motor_ids, [0x0000FFFF, 0x0000FFFF, 0x0000FFFF])
-        # self.bulk_write(ADDR_MX_PROFILE_VELOCITY,LEN_MX_PROFILE_VELOCITY,self.motor_ids,[0x0000FFFF, 0x0000FFFF, 0x0000FFFF])
-        
-        # self.bulk_write(ADDR_MX_OPERATING_MODE,LEN_MX_OPERATING_MODE,self.motor_ids,[OP_MODE_EXPOS for i in self.motor_ids])
-
+        self.configure_motors()
    
-
     
+    def configure_motors(self):
+        """
+        Configures the motors by setting their operating modes, driver modes, and profile velocities/accelerations.
+        This method is called during initialization to set up the motors for operation.
+        """
+
+        # Disable torque to set important register parameters before enabling torque
+        self.set_arm_torque(False)
+        self.set_gripper_torque(False)
+
+        # Setting operating mode for all motors
+        self.bulk_write(ADDR_MX_OPERATING_MODE, LEN_MX_OPERATING_MODE, self.motor_ids, [OP_MODE_POS for i in self.motor_ids]) # regular position control mode for arm joints even though joint 1 can use current based
+        self.bulk_write(ADDR_MX_OPERATING_MODE, LEN_MX_OPERATING_MODE, self.gripper_ids, [OP_MODE_CURPOS for i in self.gripper_ids]) # gripper uses current position mode
+        
+        # Setting driver mode for all motors
+        self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.motor_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.motor_ids]) # Time based profile drive mode for arm joints
+        self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.gripper_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.gripper_ids]) # Velocity profile drive mode for gripper
+
+        # Sets the profile velocity and acceleration for the arm motors 
+        self.write_arm_profile(velocity=ARM_PROFILE_VELOCITY, acceleration=ARM_PROFILE_ACCELERATION) # Set profile velocity and acceleration for arm motors, in radians/sec and radians/sec^2 respectively
+        # Sets the profile velocity and acceleration for the gripper
+        self.write_gripper_profile(velocity=GRIPPER_OPEN_PROFILE_VELOCITY, acceleration=GRIPPER_OPEN_PROFILE_ACCELERATION) # Set profile velocity and acceleration for gripper, in radians/sec and radians/sec^2 respectively
+
+        # write gipper current to medium of the byte
+        self.bulk_write(ADDR_MX_GOAL_CURRENT, LEN_MX_GOAL_CURRENT, self.gripper_ids, [128]) #curr
+
 
     def bulk_read(self,address,length,motor_ids):
         """
@@ -148,10 +178,7 @@ class DynamixelArm:
             if length == 4:
                 dxl_present_position, dxl_comm_result, dxl_error = self.packet_handler.read4ByteTxRx(self.port_handler, id, address)
                 
-                if address == ADDR_MX_PRESENT_POSITION:
-                    dxl_present_position = dxl_present_position - DXL_ZERO_POSITION
-
-                dxl_present_position = dxl_present_position / DXL_CONVERTION_FACTOR
+                
             else:
                 dxl_present_position, dxl_comm_result, dxl_error = self.packet_handler.read1ByteTxRx(self.port_handler, id, address)
             
@@ -199,63 +226,59 @@ class DynamixelArm:
                 print(f"Dynamixel error: {self.packet_handler.getRxPacketError(dxl_error)}")
     
     
-    
-    def read_position(self):
-        """"
-        Reads the current positions of the arm joints and gripper."
-        """
-        pos = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.motor_ids)  
-        
-        pos = [p * factor for p, factor in zip(pos, [1, -1, -1])]
-       
-        return pos
-        
-    
-    def read_velocity(self):
-        """"
-        Reads the current velocities of the arm joints."
-        """
-        vels = self.bulk_read(ADDR_MX_PRESENT_VELOCITY, LEN_MX_PRESENT_VELOCITY, self.motor_ids)  
-        vels = [vel * factor for vel, factor in zip(vels, [1, -1, -1])]
-        return vels
-    
-    def read_gripper_position(self):
-        """
-        Reads the current position of the gripper."
-        """
-        return self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.gripper_ids)[0]
-    
-
-    def set_torque(self, enable: bool):
+    ### ARM FUNCTIONS ###
+    def set_arm_torque(self, enable: bool):
         """
         Enables or disables the torque for the arm motors.
         Args:
             enable (bool): True to enable torque, False to disable.
         """
         self.bulk_write(ADDR_MX_TORQUE_ENABLE, LEN_MX_TORQUE_ENABLE, self.motor_ids, [enable, enable, enable])
+
+    def read_arm_position(self):
+        """"
+        Reads the current positions of the arm joints and gripper."
+        """
+        pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.motor_ids)  
+        pos = [(p - DXL_ZERO_POSITION) * direction / (DXL_POSITION_FACTOR) for p, direction in zip(pos_dxl, [1, -1, -1])]
+       
+        return pos
+        
     
-    def write_joints(self, positions):
+    def read_arm_velocity(self):
+        """"
+        Reads the current velocities of the arm joints."
+        """
+        vels_dxl = self.bulk_read(ADDR_MX_PRESENT_VELOCITY, LEN_MX_PRESENT_VELOCITY, self.motor_ids)  #dynamixel returns 
+        vels = [vel * direction / DXL_VELOCITY_FACTOR for vel, direction in zip(vels_dxl, [1, -1, -1])]
+        
+        return vels
+    
+    
+    def write_arm_joints(self, positions):
         """
         Writes target positions to the arm joints.
         Args:
             positions (list[float]): A list of target positions for the arm joints.
         """
-        positions = [int(position*factor*DXL_CONVERTION_FACTOR+DXL_ZERO_POSITION) for position, factor in zip(positions,[1,-1,-1])]
+        positions = [int(position*direction*DXL_POSITION_FACTOR+DXL_ZERO_POSITION) for position, direction in zip(positions,[1,-1,-1])]
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.motor_ids, positions)
 
-    def write_time(self, time):
+    def write_arm_profile(self, velocity, acceleration):
         """
-        Sets the profile velocity and acceleration for the motors based on a given time profile.
+        Sets the profile velocity and acceleration for the motors 
         Args:
-            time (float): The time in seconds for the profile velocity and acceleration.
+            velocity (float): The desired profile velocity in radians per second.
+            acceleration (float): The desired profile acceleration in radians per second squared.
         """
 
-        time_ms = int(time*1000)
-        acc_time_ms = int(time_ms/3)
+        velocity_dxl = int(velocity * DXL_VELOCITY_FACTOR) # Convert velocity to Dynamixel units
+        acceleration_dxl = int(acceleration * DXL_ACCELERATION_FACTOR) # Convert acceleration to Dynamixel units
 
-        self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.motor_ids,[time_ms, time_ms, time_ms])
-        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.motor_ids, [acc_time_ms, acc_time_ms, acc_time_ms])
+        self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.motor_ids, [velocity_dxl, velocity_dxl, velocity_dxl])
+        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.motor_ids, [acceleration_dxl, acceleration_dxl, acceleration_dxl])
 
+    ### GRIPPER FUNCTIONS ###
     def set_gripper_torque(self,enable: bool):
         """
         Enables or disables the torque for the gripper.
@@ -264,6 +287,12 @@ class DynamixelArm:
         """
         self.bulk_write(ADDR_MX_TORQUE_ENABLE, LEN_MX_TORQUE_ENABLE, self.gripper_ids, [enable])
 
+    def read_gripper_position(self):
+        """
+        Reads the current position of the gripper."
+        """
+        pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.gripper_ids)[0]
+        return pos_dxl/DXL_POSITION_FACTOR - DXL_ZERO_POSITION # Convert from Dynamixel units to radians
 
     def write_gripper(self, position):
         """
@@ -272,6 +301,15 @@ class DynamixelArm:
             position (int): The target position for the gripper.
         """
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.gripper_ids, [position])
+
+    def read_gripper_current(self):
+        """
+        Reads the current from the gripper (only available on some models like XL330 and XM430).
+        Returns:
+            int: The current value in mA if successful, None otherwise.
+        """
+        current_dxl = self.bulk_read(ADDR_MX_PRESENT_CURRENT, LEN_MX_PRESENT_CURRENT, self.gripper_ids)
+        return current_dxl[0]
 
     def open_gripper(self):
         
@@ -297,18 +335,18 @@ class DynamixelArm:
         self.write_gripper(GRIPPER_STOW)
         
 
-    def write_gripper_time(self, time):
+    def write_gripper_profile(self, velocity, acceleration):
         """
-        Sets the profile velocity and acceleration for the gripper based on a given time.
+        Sets the profile velocity and acceleration for the gripper.
         Args:
-            time (float): The time in seconds for the profile velocity and acceleration.
+            velocity (float): The desired profile velocity in radians per second.
+            acceleration (float): The desired profile acceleration in radians per second squared.
         """
-        time_ms = int(time*1000)
-        # Trapezoidal profiling - equal time spent accelerating, decelerating, and at max speed
-        acc_time_ms = int(time_ms/3)
+        velocity_dxl = int(velocity * DXL_VELOCITY_FACTOR) # Convert velocity to Dynamixel units
+        acceleration_dxl = int(acceleration * DXL_ACCELERATION_FACTOR) # Convert acceleration to Dynamixel units
 
-        self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.gripper_ids,[time_ms])
-        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.gripper_ids, [acc_time_ms])
+        self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.gripper_ids, [velocity_dxl])
+        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.gripper_ids, [acceleration_dxl])
     
     def reboot(self):
         """

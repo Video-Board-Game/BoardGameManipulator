@@ -11,6 +11,8 @@ from terrawarden_interfaces.msg import ArmStatus
 import numpy as np
 import threading
 
+# TODO: TEST RX ERRORS WITH TASK SPACE TRAJECTORY WHEN ARM AT PI/2
+
 
 GOAL = np.array([0,0,0])
 #GOAL = np.array([0,np.pi/2,-np.pi/2])
@@ -88,7 +90,6 @@ class ArmNode(Node):
 
 
         # Timers
-        # TODO Ew what -K
         self.create_timer(0.01, self.run_traj_callback)  # Timer to run the trajectory callback
         self.create_timer(0.1, self.run_stowArm_callback)  # Timer to run the stow arm callback
         self.create_timer(0.2, self.publish_status)  # Timer to publish arm status
@@ -374,7 +375,7 @@ class ArmNode(Node):
         it either runs a task trajectory or a joint trajectory. If the `stowSteps` list becomes empty, 
         the stow state is flipped to reflect the new state.
         """
-        # FUNCTION NOW RUNS @ 20 Hz
+        # FUNCTION NOW RUNS @ 10 Hz
 
         if len(self.stowSteps) > 0:                 
 # TODO: Get the current time since start???
@@ -440,132 +441,130 @@ class ArmNode(Node):
 #     ### ------------------ KAY ARCHITECTURE CHANGES ----------------------
 #     #              See comment in loop() (below) for more info
 
-#     def update_trajectory_position(self):
-#         """Runs the trajectory for the arm based on the current mode (task or joint).
-#         This function checks if the current time is within the trajectory duration and updates the arm's position accordingly.
-#         If the trajectory is in task mode, it calculates the joint angles using inverse kinematics.
-#         If the trajectory is in joint mode, it directly sets the joint angles.
-#         Args:
-#             None
-#         Returns:
-#             None
-#         """       
-#         # arm.write_time(short) incentivises the arm to travel as fast as possible to the 
-#         # intermediatetrajectory positions, which allows for smooth following. 
-#         # However, loop() updates at 10Hz, 
-#         # so any faster would be unnecessary and perhaps beyond the arm's capabilities
-#         self.arm.write_time(0.1)
+    def update_trajectory_position(self):
+        """Runs the trajectory for the arm based on the current mode (task or joint).
+        This function checks if the current time is within the trajectory duration and updates the arm's position accordingly.
+        If the trajectory is in task mode, it calculates the joint angles using inverse kinematics.
+        If the trajectory is in joint mode, it directly sets the joint angles.
+        Args:
+            None
+        Returns:
+            None
+        """       
+        # arm.write_time(short) incentivises the arm to travel as fast as possible to the 
+        # intermediatetrajectory positions, which allows for smooth following. 
 
-#         time_obj = self.get_clock().now()
-#         t_sec = time_obj.nanoseconds*1e-9 #     
+        time_obj = self.get_clock().now()
+        t_sec = time_obj.nanoseconds*1e-6 # ns to ms   
 
-# # sort out confusion between sec and ms used here
-#         if t_sec > TIME_PER_TRAJ_STEP:
-#             self.get_logger().warn(f"Trajectory has exceeded normal motion time! t = {t_sec} seconds")
-#             return
+        # sort out confusion between sec and ms used here
+        if t_sec > TIME_PER_TRAJ_STEP:
+            self.get_logger().warn(f"Trajectory has exceeded normal motion time! t = {t_sec} seconds")
+            return
         
-#         # temp variables which store the trajectory equation output
-#         a = 0
-#         b = 0
-#         c = 0
-#         # Reminder to the reader that self.traj_coeffs are the coefficients for a quintic trajectory
-#         for i in range(6):
-#             a += self.traj_coeffs[0][i] * t_sec**i
-#             b += self.traj_coeffs[1][i] * t_sec**i
-#             c += self.traj_coeffs[2][i] * t_sec**i
-#         #if task mode, calculates the joint angles using inverse kinematics
-#         if self.trajMode == TrajectoryModes.TASK_SPACE:
-#             joints = self.kinematics.ik(a,b,c)
-#         else:
-#             # Both TrajectoryModes.JOINT_SPACE and TrajectoryModes.STOW use joint space motions
-#             joints = np.array([a,b,c])
-#         # print("ABC: ",a,b,c)
-#         # print("Joints: ",joints)
-#         if joints is not None and self.kinematics.check_move_safe(joints):
-#             self.arm.write_joints(joints)
+        # temp variables which store the trajectory equation output
+        a = 0
+        b = 0
+        c = 0
+        # Reminder to the reader that self.traj_coeffs are the coefficients for a quintic trajectory
+        for i in range(6):
+            a += self.traj_coeffs[0][i] * t_sec**i
+            b += self.traj_coeffs[1][i] * t_sec**i
+            c += self.traj_coeffs[2][i] * t_sec**i
+        #if task mode, calculates the joint angles using inverse kinematics
+        if self.trajMode == TrajectoryModes.TASK_SPACE:
+            joints = self.kinematics.ik(a,b,c)
+        else:
+            # Both TrajectoryModes.JOINT_SPACE and TrajectoryModes.STOW use joint space motions
+            joints = np.array([a,b,c])
+        # print("ABC: ",a,b,c)
+        # print("Joints: ",joints)
+        if joints is not None and self.kinematics.check_move_safe(joints):
+            self.arm.write_joints(joints)
 
-#     def is_in_position(self, target_position: tuple[float, float, float], 
-#                                 trajectory_mode: TrajectoryModes = None):
-#         """
-#             Basic position checking with tolerances variables that don't currently exist :)
-#         """
-#         if trajectory_mode == None:
-#             trajectory_mode = self.trajMode
-#         # Read current arm position
-#         current_joint_positions = self.arm.read_position()
-#         current_arm_position = self.kinematics.fk(current_joint_positions)
-#         in_position = True
-#         for i in range(len(current_joint_positions)):
-#             if trajectory_mode == TrajectoryModes.TASK_SPACE:
-#                 # If any of xyz is out of the tolerance, the arm is not in position
-#                 if abs(current_arm_position[i] - target_position[i]) > self.pos_tolerance:
-#                     in_position = False
-#             else:
-#                 # Both joint_space and stow modes use joint space motion
-#                 # If *any* joint is out of the tolerance, the arm is not in position
-#                 if abs(current_joint_positions[i] - target_position[i]) > self.joint_tolerance:
-#                     in_position = False
-#         return in_position
+    def is_in_position(self, target_position: tuple[float, float, float], 
+                                trajectory_mode: TrajectoryModes = None):
+        """
+            Basic position checking with tolerances variables that don't currently exist :)
+        """
+        if trajectory_mode == None:
+            trajectory_mode = self.trajMode
+        # Read current arm position
+        current_joint_positions = self.arm.read_position()
+        current_arm_position = self.kinematics.fk(current_joint_positions)
+        in_position = True
+        for i in range(len(current_joint_positions)):
+            if trajectory_mode == TrajectoryModes.TASK_SPACE:
+                # If any of xyz is out of the tolerance, the arm is not in position
+                if abs(current_arm_position[i] - target_position[i]) > self.pos_tolerance:
+                    in_position = False
+            else:
+                # Both joint_space and stow modes use joint space motion
+                # If *any* joint is out of the tolerance, the arm is not in position
+                if abs(current_joint_positions[i] - target_position[i]) > self.joint_tolerance:
+                    in_position = False
+        return in_position
 
-#     def loop(self):
-#         """
-#             I don't want to fully implement this before I get the okay from the team
-#             but the idea of this function is to be a primary control loop (instead of the 2? 3? that Sam has)
-#             which would control all motions (including stow) all in one place
-#             The above function (update_trajectory_position) is a cleaned up version of run_traj_callback.
-#             Overall, this node is full of edge cases, sloppy code, and race conditions, and needs help
-#             I am happy to take charge and do a lot of this myself, I just don't want to completely overstep
-#             Feel free to ask me if you have any questions
+    def loop(self):
+        """
+            I don't want to fully implement this before I get the okay from the team
+            but the idea of this function is to be a primary control loop (instead of the 2? 3? that Sam has)
+            which would control all motions (including stow) all in one place
+            The above function (update_trajectory_position) is a cleaned up version of run_traj_callback.
+            Overall, this node is full of edge cases, sloppy code, and race conditions, and needs help
+            I am happy to take charge and do a lot of this myself, I just don't want to completely overstep
+            Feel free to ask me if you have any questions
             
-#             Thanks - Kay
-#         """
-#         # Runs at 10Hz, because commanding the arm to move faster than that is silly
+            Thanks - Kay
+        """
+        # Runs at 100Hz, because commanding the arm to move faster than that is silly
 
-#         # This queue would store a series of setpoints that the arm would loop through,
-#         # Set by callbacks asynchronously
-#         # Normal go_to_point callbacks would clear the queue before setting a new setpoint
-#         # But stow/unstow/more complex motion could be set using this queue setup
-#         self.setpoint_queue = []
+        # This queue would store a series of setpoints that the arm would loop through,
+        # Set by callbacks asynchronously
+        # Normal go_to_point callbacks would clear the queue before setting a new setpoint
+        # But stow/unstow/more complex motion could be set using this queue setup
+        self.setpoint_queue = []
 
-#         if len(self.setpoint_queue) > 0:
+        if len(self.setpoint_queue) > 0:
             
-#             if self.traj_running:
-#                 # Preconditions: 
-#                 # - Trajectory is running
-#                 # - Trajectory variables are set properly from below (they shouldn't be set elsewhere)
+            if self.traj_running:
+                # Preconditions: 
+                # - Trajectory is running
+                # - Trajectory variables are set properly from below (they shouldn't be set elsewhere)
 
-#                 # Handle all updates to the arm position from the trajectory
-#                 self.update_trajectory_position()
+                # Handle all updates to the arm position from the trajectory
+                self.update_trajectory_position()
 
-#             # Get current setpoint target
-#             next_setpoint = self.setpoint_queue[0]
+            # Get current setpoint target
+            next_setpoint = self.setpoint_queue[0]
 
-#             # Check if arm is in next_setpoint
-#             in_position = self.is_in_position(next_setpoint)
+            # Check if arm is in next_setpoint
+            in_position = self.is_in_position(next_setpoint)
             
-#             # If the arm is in_position (or no trajectory has begun), iterate to next setpoint
-#             if in_position:
-#                 # If we've reached a setpoint, pop it from the queue
-#                 self.setpoint_queue.pop(0)
-#                 # Set trajectory to "not running"
-#                 # so it will check if there's a new setpoint for us
-#                 self.traj_running = False
+            # If the arm is in_position (or no trajectory has begun), iterate to next setpoint
+            if in_position:
+                # If we've reached a setpoint, pop it from the queue
+                self.setpoint_queue.pop(0)
+                # Set trajectory to "not running"
+                # so it will check if there's a new setpoint for us
+                self.traj_running = False
 
-#             if not self.traj_running:
+            if not self.traj_running:
 
-#                 if len(self.setpoint_queue) > 0:
-#                     new_next_setpoint = self.setpoint_queue[0]
-#                     # Set new trajectory coeffs
-#                     self.traj_coeffs = self.kinematics.generate_trajectory(
-#                         start      = self.arm.read_position(),
-#                         end        = new_next_setpoint,
-#                         start_vel  = self.arm.read_velocity(),
-#                         start_time = 0,
-#                         end_time   = TIME_PER_TRAJ_STEP)
-#                     self.traj_running = True
-#         else:
-#             # if the queue is empty, then no trajectory is running
-#             self.traj_running = False
+                if len(self.setpoint_queue) > 0:
+                    new_next_setpoint = self.setpoint_queue[0]
+                    # TODO: Adjust for trajectory mode
+                    # Set new trajectory coeffs
+                    self.traj_coeffs = self.kinematics.generate_trajectory(
+                        start      = self.arm.read_position(),
+                        end        = new_next_setpoint,
+                        start_vel  = self.arm.read_velocity(),
+                        start_time = 0,
+                        end_time   = TIME_PER_TRAJ_STEP)
+                    self.traj_running = True
+        else:
+            # if the queue is empty, then no trajectory is running
+            self.traj_running = False
 
 def main(args=None):
     # Main entry point
