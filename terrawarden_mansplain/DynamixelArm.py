@@ -111,8 +111,13 @@ class DynamixelArm:
         # write profile velocity limit to gripper servo in revolutions per minute
         self.bulk_write(ADDR_MX_PROFILE_VELOCITY,LEN_MX_PROFILE_VELOCITY,self.gripper_ids,[200])
         # write gipper current to medium of the byte
-        self.bulk_write(ADDR_MX_CURRENT, LEN_MX_CURRENT,self.gripper_ids,[128])
-
+        self.bulk_write(ADDR_MX_CURRENT, LEN_MX_CURRENT,self.gripper_ids,[128]) 
+        
+        time.sleep(0.1) 
+        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION,LEN_MX_PROFILE_ACCELERATION,self.motor_ids, [0x0000FFFF, 0x0000FFFF, 0x0000FFFF])
+        self.bulk_write(ADDR_MX_PROFILE_VELOCITY,LEN_MX_PROFILE_VELOCITY,self.motor_ids,[0x0000FFFF, 0x0000FFFF, 0x0000FFFF])
+        
+        time.sleep(0.1) 
         # self.bulk_write(ADDR_MX_OPERATING_MODE,LEN_MX_OPERATING_MODE,self.motor_ids,[OP_MODE_EXPOS for i in self.motor_ids])
 
    
@@ -239,18 +244,18 @@ class DynamixelArm:
         positions = [int(position*factor*DXL_CONVERTION_FACTOR+DXL_ZERO_POSITION) for position, factor in zip(positions,[1,-1,-1])]
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.motor_ids, positions)
 
-    def write_time(self, time):
-        """
-        Sets the profile velocity and acceleration for the motors based on a given time profile.
-        Args:
-            time (float): The time in seconds for the profile velocity and acceleration.
-        """
+    # def write_time(self, time):
+    #     """
+    #     Sets the profile velocity and acceleration for the motors based on a given time profile.
+    #     Args:
+    #         time (float): The time in seconds for the profile velocity and acceleration.
+    #     """
 
-        time_ms = int(time*1000)
-        acc_time_ms = int(time_ms/3)
+    #     time_ms = int(time*1000)
+    #     acc_time_ms = int(time_ms/3)
 
-        self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.motor_ids,[time_ms, time_ms, time_ms])
-        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.motor_ids, [acc_time_ms, acc_time_ms, acc_time_ms])
+    #     self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.motor_ids,[time_ms, time_ms, time_ms])
+    #     self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.motor_ids, [acc_time_ms, acc_time_ms, acc_time_ms])
 
     def set_gripper_torque(self,enable: bool):
         """
