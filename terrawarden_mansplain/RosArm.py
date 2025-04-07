@@ -25,29 +25,40 @@ TIME_PER_STOW_STEP = 1.250  # tuned for not much drone jerk
 
 STOW_JOINT_TOLERANCE = 0.05 # radians, tolerance for stow joint positions, this is to ensure the arm is in a safe stow position
 
-STOW_ROUTINE_SETPOINTS = [
-    # Stow routine setpoints (type, val1, val2, val3)
-    ("joint", 0, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE), 
-    ("joint", -31*np.pi/32, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE), # rotate straight down so as not to obstruct the drone optical flow
-    ("joint", -30*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  # fold upwards base joint back
-    ("joint", -19*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  
-    ("joint", -19*np.pi/32, -14*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE)   # Final position resting folded on the drone leg
-]
-UNSTOW_ROUTINE_SETPOINTS = [
-    # Unstow routine setpoints (type, val1, val2, val3)
-    ("joint", -19*np.pi/32, -14*np.pi/32, 16*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE), # stow position, then unstow basically backwards
-    ("joint", -19*np.pi/32, -17*np.pi/32, 16*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),  
-    ("joint", -31*np.pi/32, -17*np.pi/32, 16*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),    
-    ("joint", -31*np.pi/32, 3*np.pi/32, -14*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),
-    ("joint", -31*np.pi/32, 0*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),
-    ("joint", 0, 0*np.pi/32, -12*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE), # make the massive swing slower    
-    ("joint", 0, 0, 0,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)  # Final position to ensure the arm is fully unstowed in "L" shape forward
-]
-
 from enum import Enum
 class TrajectoryModes(Enum):
     JOINT_SPACE = "joint"
     TASK_SPACE = "task"
+
+class Grasps(Enum):
+    """
+    Enum for grasp modes, used to determine how the gripper should behave during a trajectory.
+    """
+    OPEN = "open"
+    CLOSE = "close"
+    STOW = "stow" 
+    NONE = "none"  # Used when no grasp is desired
+
+STOW_ROUTINE_SETPOINTS = [
+    # Stow routine setpoints (type, val1, val2, val3)
+    (TrajectoryModes.JOINT_SPACE, 0, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE), 
+    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE), # rotate straight down so as not to obstruct the drone optical flow
+    (TrajectoryModes.JOINT_SPACE, -30*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  # fold upwards base joint back
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE,Grasps.STOW)   # Final position resting folded on the drone leg
+]
+UNSTOW_ROUTINE_SETPOINTS = [
+    # Unstow routine setpoints (type, val1, val2, val3)
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32, 16*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE), # stow position, then unstow basically backwards
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32, 16*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),  
+    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, -17*np.pi/32, 16*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),    
+    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 3*np.pi/32, -14*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),
+    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 0*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),
+    (TrajectoryModes.JOINT_SPACE, 0, 0*np.pi/32, -12*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE,Grasps.OPEN), # make the massive swing slower    
+    (TrajectoryModes.JOINT_SPACE, 0, 0, 0,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)  # Final position to ensure the arm is fully unstowed in "L" shape forward
+]
+
+ 
 
 
 class ArmNode(Node):
@@ -73,14 +84,13 @@ class ArmNode(Node):
         self.trajMode = TrajectoryModes.TASK_SPACE
         self.traj_running = False  # Flag to indicate if a trajectory is currently running
         self.setpoint_queue = [] # Queue to hold setpoints for the arm to follow, this allows for chaining multiple trajectories together
-        "Setpoint queue format: [(type, val1, val2, val3, movement_time, tolerance), ...] where type is 'joint' or 'task'"
         self.tolerance = 0.005  # Tolerance for task space position checking (meters)
         self.isStowed=False
         if not self.check_if_arm_stowed(): # Check if the arm is in a stowed position at startup
             # is stowed, snap back to position
             self.isStowed = True
 
-        self.grasp_at_end_move = False # Flag to indicate if we should grasp at the end of a move, default to False
+        self.grasp_at_end_move = Grasps.NONE # Flag to indicate if we should grasp at the end of a move, default to False
         self.arm_command = None # Initialize to None, will be set in the callback
 
         # Publishers
@@ -136,19 +146,43 @@ class ArmNode(Node):
             self.goal = np.array([msg.x, msg.y, msg.z])            
             if msg.trajectory_mode == TrajectoryModes.TASK_SPACE.value:
                 # Generate a task trajectory to the new goal
-                self.setpoint_queue = [("task", self.goal[0], self.goal[1], self.goal[2], msg.movement_time, msg.tolerance)]  # Clear the queue and set the new goal
+                # Clear the queue and set the new goal
+                if msg.grasp_at_end_of_movement:
+                    self.setpoint_queue = [(TrajectoryModes.TASK_SPACE, self.goal[0], self.goal[1], self.goal[2], msg.movement_time, msg.tolerance, Grasps.CLOSE)]  
+                else:
+                    self.setpoint_queue = [(TrajectoryModes.TASK_SPACE, self.goal[0], self.goal[1], self.goal[2], msg.movement_time, msg.tolerance)]   
                 self.get_logger().info(f"New goal set: {self.goal}")
             elif msg.trajectory_mode == TrajectoryModes.JOINT_SPACE.value:
                 # Generate a joint trajectory to the new goal
                 goal_joints = self.kinematics.ik(self.goal[0], self.goal[1], self.goal[2])  # Calculate the joint angles for the goal position
-                self.setpoint_queue = [("joint", goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance)]  # Clear the queue and set the new goal
+                # Clear the queue and set the new goal
+                if goal_joints is None:
+                    self.get_logger().error("Cannot calculate joint angles for the given goal position, aborting trajectory.")
+                    return
+                if msg.grasp_at_end_of_movement:
+                    # If grasp at end of movement is requested, add the grasp mode to the setpoint queue
+                    self.setpoint_queue = [(TrajectoryModes.JOINT_SPACE, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance, Grasps.CLOSE)]
+                else:
+                    # Otherwise, just set the joint trajectory without grasping 
+                    self.setpoint_queue = [(TrajectoryModes.JOINT_SPACE, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance)] 
                 self.get_logger().info(f"New joint goal set: {goal_joints} with movement time: {msg.movement_time}")
             else:
                 self.get_logger().error(f"Invalid trajectory mode: {msg.trajectory_mode}. Cannot set new trajectory.")
                 return
             self.get_logger().info(f"Current setpoint queue: {self.setpoint_queue}")
                       
-        
+    def force_grasp_callback(self, msg: Bool):
+        """
+        Callback for the force_grasp topic which forces the gripper open or closed.
+        Args:
+            msg: The Bool message indicating whether to open grasp (True) or not (False).
+        Returns:
+            None
+        """
+        if msg.data: 
+            self.arm.open_gripper()  # Ensure the gripper is open before setting the flag
+        else:
+            self.arm.close_gripper()
     
 
     def publish_status(self):
@@ -185,12 +219,10 @@ class ArmNode(Node):
         status_msg.is_stowed = self.check_if_arm_stowed() # Include the stow state in the status message
         status_msg.is_tracking = self.traj_running # Include the tracking state in the status message
         status_msg.trajectory_mode = str(self.trajMode) # Include the trajectory mode (task or joint) in the status message
-        
+        status_msg.grasping_object = self.detect_if_grasped()  # Detect if the gripper has grasped an object based on the gripper current
+
         self.status_publisher.publish(status_msg)
 
-
-    
-        
 
 
     # --- Stow/unstow methods
@@ -314,7 +346,7 @@ class ArmNode(Node):
                     in_position = False
         return in_position
     
-    def setNewTrajectory(self, setpoint: tuple[str, float, float, float, float, float] ):
+    def setNewTrajectory(self, setpoint: tuple[TrajectoryModes, float, float, float, float, float, Grasps] ):
         """
             Sets a new trajectory based on the provided setpoint.
             This function will clear the current trajectory and set a new one based on the input setpoint.
@@ -328,6 +360,7 @@ class ArmNode(Node):
         current_joints = self.arm.read_position()  # Get the current joint positions
         current_joint_vel = self.arm.read_velocity() # Get the current joint velocities
         self.tolerance = setpoint[5] if len(setpoint) > 5 else self.tolerance  # Allow for custom tolerance from the setpoint, otherwise use default
+        self.grasp_at_end_move = setpoint[6] if len(setpoint) > 6 else Grasps.NONE  # Allow for custom grasp mode from the setpoint, otherwise use default
         if setpoint[0] == TrajectoryModes.TASK_SPACE.value:
             # Generate a task trajectory to the new goal
             self.goal = np.array([setpoint[1], setpoint[2], setpoint[3]])  # Update the goal from the setpoint
@@ -362,6 +395,28 @@ class ArmNode(Node):
             self.get_logger().error(f"Invalid trajectory mode: {setpoint[0]}. Cannot set new trajectory.")
         self.traj_running = True  # Set trajectory running to true, so the loop will process it
 
+    def execute_grasp_at_end_move(self):
+        if self.grasp_at_end_move == Grasps.CLOSE:
+            """
+                Execute a grasp at the end of the move if requested
+            """
+            self.arm.close_gripper()
+            self.get_logger().info("Gripper closed at end of move.")
+        elif self.grasp_at_end_move == Grasps.OPEN:
+            """
+                Execute an open grasp at the end of the move if requested
+            """
+            self.arm.open_gripper()
+            self.get_logger().info("Gripper opened at end of move.")
+        elif self.grasp_at_end_move == Grasps.STOW:
+            """
+                Execute a stow grasp at the end of the move if requested
+                This is a special case for stowing the gripper at the end of a trajectory
+            """
+            self.arm.stow_gripper()
+            self.get_logger().info("Gripper stowed at end of move.")
+        
+
     def loop(self):
         """
             I don't want to fully implement this before I get the okay from the team
@@ -384,13 +439,7 @@ class ArmNode(Node):
 
         if len(self.setpoint_queue) > 0:
             
-            if self.traj_running:
-                # Preconditions: 
-                # - Trajectory is running
-                # - Trajectory variables are set properly from below (they shouldn't be set elsewhere)
-
-                # Handle all updates to the arm position from the trajectory
-                self.update_trajectory_position()
+            
 
             # Get current setpoint target
             next_setpoint = self.setpoint_queue[0]
@@ -400,13 +449,22 @@ class ArmNode(Node):
             
             # If the arm is in_position (or no trajectory has begun), iterate to next setpoint
             if in_position:
+                self.execute_grasp_at_end_move() # Execute grasp if needed at the end of the move
                 # If we've reached a setpoint, pop it from the queue
                 self.setpoint_queue.pop(0)
                 # Set trajectory to "not running"
                 # so it will check if there's a new setpoint for us
                 self.traj_running = False
 
-            if not self.traj_running:
+
+            if self.traj_running:
+                # Preconditions: 
+                # - Trajectory is running
+                # - Trajectory variables are set properly from below (they shouldn't be set elsewhere)
+
+                # Handle all updates to the arm position from the trajectory
+                self.update_trajectory_position()
+            elif not self.traj_running:
                 if len(self.setpoint_queue) > 0:
                     new_next_setpoint = self.setpoint_queue[0]
                     self.setNewTrajectory(new_next_setpoint) # Set a new trajectory based on the next setpoint in the queue
