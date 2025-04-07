@@ -50,7 +50,7 @@ ADDR_MX_PRESENT_VELOCITY = 128      # Address for reading current velocity
 ADDR_MX_PROFILE_VELOCITY = 112      # Address for setting profile velocity
 ADDR_MX_PROFILE_ACCELERATION = 108  # Address for setting profile acceleration
 ADDR_MX_PRESENT_CURRENT = 126 # Address for reading current (only available on some models like XL330 and XM430)
-ADDR_MX_GOAL_CURRENT = 102 # Address for setting goal current (only available on some models like XL330 and XM430)
+ADDR_MX_CURRENT_LIMIT = 36 # Address for setting current limit (only available on some models like XL330 and XM430)
 
 # Data Byte Length
 LEN_MX_OPERATING_MODE = 1
@@ -62,7 +62,7 @@ LEN_MX_PRESENT_VELOCITY = 4
 LEN_MX_PROFILE_VELOCITY = 4
 LEN_MX_PROFILE_ACCELERATION = 4
 LEN_MX_PRESENT_CURRENT = 2
-LEN_MX_GOAL_CURRENT = 2 
+LEN_MX_CURRENT = 2 
 
 
 # Protocol version
@@ -149,8 +149,8 @@ class DynamixelArm:
         # Sets the profile velocity and acceleration for the gripper
         self.write_gripper_profile(velocity=GRIPPER_OPEN_PROFILE_VELOCITY, acceleration=GRIPPER_OPEN_PROFILE_ACCELERATION) # Set profile velocity and acceleration for gripper, in radians/sec and radians/sec^2 respectively
 
-        # write gipper current to medium of the byte
-        self.bulk_write(ADDR_MX_GOAL_CURRENT, LEN_MX_GOAL_CURRENT, self.gripper_ids, [128]) #curr
+        # write gripper current to medium of the byte
+        self.bulk_write(ADDR_MX_CURRENT_LIMIT, LEN_MX_CURRENT, self.gripper_ids, [128]) #curr
 
 
     def bulk_read(self,address,length,motor_ids):

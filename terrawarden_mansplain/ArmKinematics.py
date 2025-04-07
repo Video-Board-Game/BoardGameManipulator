@@ -179,6 +179,7 @@ class ArmKinematics:
     def generate_trajectory(self, start, end, start_vel=[0,0,0], start_time=0, end_time=1):
         # TODO: MAKE THIS FUNCTION ACCOUNT FOR THE ARM'S MAX VELOCITY
         #       AND RETURN AN ADJUSTED END TIME
+        # NO
         coeffs = np.zeros((3,6))
         def quintic_traj(start_angle, end_angle, start_vel, end_vel, start_acc, end_acc, start_time, end_time):
             answer_vec = np.array([start_angle, start_vel, start_acc, end_angle, end_vel, end_acc])
