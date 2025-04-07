@@ -97,8 +97,8 @@ GRIPPER_OPEN = 3072
 GRIPPER_CLOSE = 1024
 GRIPPER_STOW = 1600 # barely closed for transport, but without risk of overheating
 
-ARM_PROFILE_VELOCITY = 2*np.pi # radians/sec, this is the desired velocity for the arm joints
-ARM_PROFILE_ACCELERATION = np.pi # radians/sec^2, this is the desired acceleration for the arm joints
+ARM_PROFILE_VELOCITY = 10*np.pi # radians/sec, this is the desired velocity for the arm joints
+ARM_PROFILE_ACCELERATION = 5*np.pi # radians/sec^2, this is the desired acceleration for the arm joints
 GRIPPER_OPEN_PROFILE_VELOCITY = 2*np.pi # radians/sec, this is the desired velocity for the gripper
 GRIPPER_OPEN_PROFILE_ACCELERATION = np.pi # radians/sec^2, this is the desired acceleration for the gripper
 
@@ -126,7 +126,7 @@ class DynamixelArm:
         self.configure_motors()
    
     
-    def configure_motors(self):
+    def configure_motors(self, enable_at_end = False):
         """
         Configures the motors by setting their operating modes, driver modes, and profile velocities/accelerations.
         This method is called during initialization to set up the motors for operation.
@@ -150,7 +150,10 @@ class DynamixelArm:
         self.write_gripper_profile(velocity=GRIPPER_OPEN_PROFILE_VELOCITY, acceleration=GRIPPER_OPEN_PROFILE_ACCELERATION) # Set profile velocity and acceleration for gripper, in radians/sec and radians/sec^2 respectively
 
         # write gripper current to medium of the byte
-        self.bulk_write(ADDR_MX_CURRENT_LIMIT, LEN_MX_CURRENT, self.gripper_ids, [128]) #curr
+        self.bulk_write(ADDR_MX_CURRENT_LIMIT, LEN_MX_CURRENT, self.gripper_ids, [128]) # current
+        
+        self.set_arm_torque(enable_at_end)
+        self.set_gripper_torque(enable_at_end)
 
 
     def bulk_read(self,address,length,motor_ids):

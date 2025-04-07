@@ -203,15 +203,19 @@ class ArmKinematics:
         return coeffs
     
     def check_move_safe(self, joints):
-        if not (self.jointLims[1][0] <= joints[1] <= self.jointLims[1][1] and self.jointLims[2][0] <= joints[2] <= self.jointLims[2][1]):
-            return False
+        # Check if the move is safe
+        if (self.jointLims[1][0] <= joints[1] <= self.jointLims[1][1] and self.jointLims[2][0] <= joints[2] <= self.jointLims[2][1]):
+            return True
         
         fk_pos = self.fk(joints)
         x, y, z = fk_pos[0, 3], fk_pos[1, 3], fk_pos[2, 3]
         
-        if z < 0 and (x**2 + y**2 >= self.L1**2 or z <= -self.L1):
-            return True
+        # TODO: add check to prevent it from going through itself
         
+        # if Z is below drone props and 
+        if z < 0.15:
+            return True
+    
         return False
 
 if __name__ == "__main__":
