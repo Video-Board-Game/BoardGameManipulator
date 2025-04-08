@@ -3,6 +3,7 @@ import numpy as np
 
 class ArmKinematics:
     def __init__(self):
+        self.L0 = 0.0275 #shift forward from center of FLU
         self.L1 = 0.20375-.02
         self.L2 = np.hypot(.23746,.017)
         self.L3 = 0.25
@@ -54,11 +55,12 @@ class ArmKinematics:
             if i == 0:
                 dir = -1#to account for joint0 being flipped since we arent using symbolic DH parameters
             T = T @ self.dh2mat(dir*joints[i],self.dh_table_const[i])
+        T[0][3]=T[0][3]+self.L0 #accounting for center offset from FLU
         return T
     
     def ik(self,x,y,z):
         """Calculate the inverse kinematics for the given x, y, z position."""
-
+        x=x-self.L0 #accounting for center offset from FLU
         joint0 = np.zeros(1)
         r=np.sqrt(x**2+y**2)
 
@@ -106,9 +108,13 @@ class ArmKinematics:
         # Verifying combinations to find correct combinations since with Atan2 to find potential negative angles acos wouldnt
         validAnswer= False
         validJoints = np.zeros(3)
+        print(joint0)
+        print(joint1)
+        print(joint2)
         for i in range(4):
-            for j in range(2):
+            for j in range(1):
                 for k in range(2):
+                    
                     joints = np.array([joint0[j],(j*-2+1)*joint1[i],joint2[k]])
                     valid = True
                     for l in range(3):

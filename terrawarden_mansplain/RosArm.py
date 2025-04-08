@@ -153,10 +153,13 @@ class ArmNode(Node):
             elif msg.trajectory_mode == TrajectoryModes.JOINT_SPACE.value:
                 # Generate a joint trajectory to the new goal
                 goal_joints = self.kinematics.ik(self.goal[0], self.goal[1], self.goal[2])  # Calculate the joint angles for the goal position
+                
                 # Clear the queue and set the new goal
                 if goal_joints is None:
-                    self.get_logger().error("Cannot calculate joint angles for the given goal position, aborting trajectory.")
+                    self.get_logger().error(f"Cannot calculate joint angles for the given goal position {self.goal}, aborting trajectory.")
                     return
+                self.arm.write_arm_joints(goal_joints)
+                return
                 if msg.grasp_at_end_of_movement:
                     # If grasp at end of movement is requested, add the grasp mode to the setpoint queue
                     self.setpoint_queue = [(TrajectoryModes.JOINT_SPACE, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance, Grasps.CLOSE)]
@@ -168,6 +171,7 @@ class ArmNode(Node):
                 self.get_logger().error(f"Invalid trajectory mode: {msg.trajectory_mode}. Cannot set new trajectory.")
                 return
             self.get_logger().info(f"Current setpoint queue: {self.setpoint_queue}")
+            self.traj_running=False
                       
     def force_grasp_callback(self, msg: Bool):
         """
@@ -370,6 +374,7 @@ class ArmNode(Node):
         # Read current arm position
         current_joint_positions = self.arm.read_arm_position()
         current_arm_position = self.kinematics.fk(current_joint_positions)
+        current_arm_position = [current_arm_position[0][3],current_arm_position[1][3],current_arm_position[2][3]]
         in_position = True
         
         for i in range(len(current_joint_positions)):
@@ -529,25 +534,25 @@ def main(args=None):
     rclpy.init(args=args)
     node = ArmNode()    
     
-    try:
+    # try:
         # import time
         # time.sleep(1)    
-        # node.unStowArm()        
+    node.unStowArm()        
         # node.stowArm()
         
         #manually send it to a test position using trajectory:
         # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, 0, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )        
         # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, -np.pi/4, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )
 
-        rclpy.spin(node)
+    rclpy.spin(node)
                    
-    except Exception as e:
-        node.get_logger().error(f"Exception occurred: {str(e)}")
-        node.on_shutdown_()    
+    # except Exception as e:
+    #     node.get_logger().error(f"Exception occurred: {str(e)}")
+    #     node.on_shutdown_()    
     
-    except KeyboardInterrupt:        
-        node.get_logger().info("Keyboard interrupt received, shutting down arm node...")
-        node.on_shutdown_()
+    # except KeyboardInterrupt:        
+    #     node.get_logger().info("Keyboard interrupt received, shutting down arm node...")
+    #     node.on_shutdown_()
 
 if __name__ == '__main__':
     main()
