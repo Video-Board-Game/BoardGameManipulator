@@ -13,19 +13,6 @@ import threading
 
 # TODO: TEST RX ERRORS WITH TASK SPACE TRAJECTORY WHEN ARM AT PI/2
 
-
-GOAL = np.array([0,0,0])
-GRASP_CURRENT_THRESHOLD = 100  # Threshold for gripper current to consider it grasped (this is arbitrary and should be tuned)
-
-# Time in milliseconds for each step, used to space out multi-step routines
-TIME_PER_TRAJ_STEP = 1.2
-
-TIME_PER_STOW_STEP = 0.9  # tuned for not much drone jerk
-STOW_JOINT_TOLERANCE = 0.05 # radians, tolerance for stow joint positions, this is to ensure the arm is in a safe stow position
-
-TIME_MARGIN = 0.0  # seconds, margin for trajectory timing
-
-
 from enum import Enum
 class TrajectoryModes(Enum):
     JOINT_SPACE = "joint"
@@ -40,25 +27,36 @@ class Grasps(Enum):
     STOW = "stow" 
     NONE = "none"  # Used when no change in grasp is desired
 
+
+GOAL = np.array([0,0,0])
+GRASP_CURRENT_THRESHOLD = 100  # Threshold for gripper current to consider it grasped (this is arbitrary and should be tuned)
+
+# Time in milliseconds for each step, used to space out multi-step routines
+TIME_PER_TRAJ_STEP = 1.2
+TIME_MARGIN = 0.0  # seconds, margin for trajectory timing
+
+TIME_PER_STOW_STEP = 0.9  # tuned for not much drone jerk
+STOW_JOINT_MOVE_TOLERANCE = 0.05 # radians, tolerance for stow joint positions, this is to ensure the arm is in a safe stow position
+STOW_JOINT_DETECT_TOLERANCE = tuple([8*np.pi/32, 2*np.pi/32, 4*np.pi/32]) # radians, half-tolerance for joints 2 and 3 to detect if arm is in folded position
+
+# routines check whether the arm is folded or not, and skip to the last two stow steps if it is
 STOW_ROUTINE_SETPOINTS = [ 
     # Stow routine setpoints (type, val1, val2, val3)
-    (TrajectoryModes.JOINT_SPACE, 0, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE, Grasps.STOW), 
-    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE), # rotate straight down so as not to obstruct the drone optical flow
-    (TrajectoryModes.JOINT_SPACE, -30*np.pi/32, -17*np.pi/32, 15*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  # fold upwards base joint back
-    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32, 15*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  
-    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32, 15*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE)   # Final position resting folded on the drone leg
+    (TrajectoryModes.JOINT_SPACE, 0, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_MOVE_TOLERANCE, Grasps.STOW), 
+    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_MOVE_TOLERANCE), # rotate straight down so as not to obstruct the drone optical flow
+    (TrajectoryModes.JOINT_SPACE, -30*np.pi/32, -17*np.pi/32, 15*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_MOVE_TOLERANCE),  # fold upwards base joint back
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32, 15*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_MOVE_TOLERANCE),  
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32, 15*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_MOVE_TOLERANCE, Grasps.STOW)   # Final position resting folded on the drone leg
 ]
 UNSTOW_ROUTINE_SETPOINTS = [
     # Unstow routine setpoints (type, val1, val2, val3)
-    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32, 15*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE), # stow position, then unstow basically backwards
-    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32, 15*np.pi/32,TIME_PER_STOW_STEP / 2, STOW_JOINT_TOLERANCE),  
-    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, -17*np.pi/32, 15*np.pi/32,TIME_PER_STOW_STEP / 2, STOW_JOINT_TOLERANCE, Grasps.OPEN),        
-    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 0*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP * 2, STOW_JOINT_TOLERANCE),
-    (TrajectoryModes.JOINT_SPACE, 0, 0, -17*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE), # make the massive swing slower    
-    (TrajectoryModes.JOINT_SPACE, 0, 0, 0,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)  # Final position to ensure the arm is fully unstowed in "L" shape forward
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32, 15*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_MOVE_TOLERANCE), # stow position, then unstow basically backwards
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32, 15*np.pi/32,TIME_PER_STOW_STEP / 2, STOW_JOINT_MOVE_TOLERANCE),  
+    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, -17*np.pi/32, 15*np.pi/32,TIME_PER_STOW_STEP / 2, STOW_JOINT_MOVE_TOLERANCE),        
+    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 0*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP * 2, STOW_JOINT_MOVE_TOLERANCE, Grasps.OPEN),
+    (TrajectoryModes.JOINT_SPACE, 0, 0, -17*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_MOVE_TOLERANCE), # make the massive swing slower    
+    (TrajectoryModes.JOINT_SPACE, 0, 0, 0,TIME_PER_STOW_STEP, STOW_JOINT_MOVE_TOLERANCE)  # Final position to ensure the arm is fully unstowed in "L" shape forward
 ]
-
- 
 
 
 class ArmNode(Node):
@@ -233,16 +231,39 @@ class ArmNode(Node):
         Returns:
             bool: True if the arm is stowed, False otherwise.
         """
-        joints = self.arm.read_arm_position()
-        self.get_logger().info(f"Checking if arm is stowed with joint positions: {joints[0]}") # Log the joint positions for debugging
-        if -np.pi/2.1 < joints[0] < np.pi/2:
-            return False
-        else:
+        joints = self.arm.read_arm_position()   
+        # get the stow position from the last setpoint in the stow routine
+        stow_pos_joints = STOW_ROUTINE_SETPOINTS[-1][1:4]
+        if abs(joints[1] - stow_pos_joints[1]) < 2*abs(STOW_JOINT_DETECT_TOLERANCE[1]) and abs(joints[2] - stow_pos_joints[2]) < 2*abs(STOW_JOINT_DETECT_TOLERANCE[2]):
             return True
+        else:
+            return False
+        
+        # self.get_logger().info(f"Checking if arm is stowed with joint positions: {joints[0]}") # Log the joint positions for debugging
+        # if -np.pi/2.1 < joints[0] < np.pi/2:
+        #     return False
+        # else:
+        #     return True
     
+    
+    def check_if_arm_folded(self):
+        """
+        Checks if the arm is in a folded position.
+        This function checks the current joint positions to determine if the arm is in a folded position.
+        Returns:
+            bool: True if the arm is folded, False otherwise.
+        """
+        joints = self.arm.read_arm_position()   
+        # get the stow position from the last setpoint in the stow routine
+        stow_pos_joints = STOW_ROUTINE_SETPOINTS[-1][1:4]
+        if abs(joints[1] - stow_pos_joints[1]) < abs(STOW_JOINT_DETECT_TOLERANCE[1]) and abs(joints[2] - stow_pos_joints[2]) < abs(STOW_JOINT_DETECT_TOLERANCE[2]):
+            return True
+        else:
+            return False
 
     def stowArm(self,req=None,resp=None):
         """Initiates the stowing sequence if the arm is unstowed.
+            Skips directly to the last two steps to snap the arm back to the stow position if the arm is folded
 
         Args:
             req: The service request (unused).
@@ -251,6 +272,11 @@ class ArmNode(Node):
         if not self.check_if_arm_stowed():
             self.setpoint_queue=STOW_ROUTINE_SETPOINTS.copy() 
             self.traj_running = False # Ensure loop will recalcoefficients for the next trajectory step
+            
+        # if arm is stowed, check if it is folded on the leg and tighten it
+        elif self.check_if_arm_folded():
+                self.get_logger().info("Arm is folded, skipping to last stow step")
+                self.setpoint_queue=STOW_ROUTINE_SETPOINTS[-2:].copy()  # Skip to the last two steps of the stow routine            
         return resp
         
         
@@ -262,8 +288,8 @@ class ArmNode(Node):
             resp: The service response (unused).
         """
         self.get_logger().info(f"uns Arm Service is stowed: {self.check_if_arm_stowed()}") # Log the stow check for debugging
-        if self.check_if_arm_stowed():
-            self.setpoint_queue=UNSTOW_ROUTINE_SETPOINTS.copy()        
+        if self.check_if_arm_stowed():           
+            self.setpoint_queue=UNSTOW_ROUTINE_SETPOINTS.copy()                  
             self.traj_running = False # Ensure loop will recalcoefficients for the next trajectory step
        
         return resp
@@ -503,26 +529,25 @@ def main(args=None):
     rclpy.init(args=args)
     node = ArmNode()    
     
-    # try:
-    import time
-    # node.arm.stow_gripper()
-    time.sleep(1)
-    node.unStowArm()        
-    node.stowArm()
-    
-    #manually send it to a test position using trajectory:
-    # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, 0, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )        
-    # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, -np.pi/4, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )
+    try:
+        # import time
+        # time.sleep(1)    
+        # node.unStowArm()        
+        # node.stowArm()
+        
+        #manually send it to a test position using trajectory:
+        # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, 0, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )        
+        # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, -np.pi/4, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )
 
-    rclpy.spin(node)
+        rclpy.spin(node)
                    
-    # except Exception as e:
-    #     node.get_logger().error(f"Exception occurred: {str(e)}")
-    #     node.on_shutdown_()    
+    except Exception as e:
+        node.get_logger().error(f"Exception occurred: {str(e)}")
+        node.on_shutdown_()    
     
-    # except KeyboardInterrupt:        
-    #     node.get_logger().info("Keyboard interrupt received, shutting down arm node...")
-    #     node.on_shutdown_()
+    except KeyboardInterrupt:        
+        node.get_logger().info("Keyboard interrupt received, shutting down arm node...")
+        node.on_shutdown_()
 
 if __name__ == '__main__':
     main()
