@@ -18,11 +18,13 @@ GOAL = np.array([0,0,0])
 GRASP_CURRENT_THRESHOLD = 100  # Threshold for gripper current to consider it grasped (this is arbitrary and should be tuned)
 
 # Time in milliseconds for each step, used to space out multi-step routines
-TIME_PER_TRAJ_STEP = 1.2*3
+TIME_PER_TRAJ_STEP = 1.2
 
-TIME_PER_STOW_STEP = 1.25*3  # tuned for not much drone jerk
+TIME_PER_STOW_STEP = 0.9  # tuned for not much drone jerk
+STOW_JOINT_TOLERANCE = 0.05 # radians, tolerance for stow joint positions, this is to ensure the arm is in a safe stow position
 
-STOW_JOINT_TOLERANCE = 0.2 # radians, tolerance for stow joint positions, this is to ensure the arm is in a safe stow position
+TIME_MARGIN = 0.0  # seconds, margin for trajectory timing
+
 
 from enum import Enum
 class TrajectoryModes(Enum):
@@ -38,22 +40,21 @@ class Grasps(Enum):
     STOW = "stow" 
     NONE = "none"  # Used when no change in grasp is desired
 
-STOW_ROUTINE_SETPOINTS = [
+STOW_ROUTINE_SETPOINTS = [ 
     # Stow routine setpoints (type, val1, val2, val3)
-    (TrajectoryModes.JOINT_SPACE, 0, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE), 
+    (TrajectoryModes.JOINT_SPACE, 0, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE, Grasps.STOW), 
     (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 0, -17*np.pi/32,TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE), # rotate straight down so as not to obstruct the drone optical flow
-    (TrajectoryModes.JOINT_SPACE, -30*np.pi/32, -17*np.pi/32, 16*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  # fold upwards base joint back
-    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32, 16*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  
-    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32, 16*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE, Grasps.STOW)   # Final position resting folded on the drone leg
+    (TrajectoryModes.JOINT_SPACE, -30*np.pi/32, -17*np.pi/32, 15*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  # fold upwards base joint back
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32, 15*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE),  
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32, 15*np.pi/32, TIME_PER_STOW_STEP,STOW_JOINT_TOLERANCE)   # Final position resting folded on the drone leg
 ]
 UNSTOW_ROUTINE_SETPOINTS = [
     # Unstow routine setpoints (type, val1, val2, val3)
-    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32, 16*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE), # stow position, then unstow basically backwards
-    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32, 16*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),  
-    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, -17*np.pi/32, 16*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),    
-    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 3*np.pi/32, -14*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),
-    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 0*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE),
-    (TrajectoryModes.JOINT_SPACE, 0, 0, -12*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE, Grasps.OPEN), # make the massive swing slower    
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -14*np.pi/32, 15*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE), # stow position, then unstow basically backwards
+    (TrajectoryModes.JOINT_SPACE, -19*np.pi/32, -17*np.pi/32, 15*np.pi/32,TIME_PER_STOW_STEP / 2, STOW_JOINT_TOLERANCE),  
+    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, -17*np.pi/32, 15*np.pi/32,TIME_PER_STOW_STEP / 2, STOW_JOINT_TOLERANCE, Grasps.OPEN),        
+    (TrajectoryModes.JOINT_SPACE, -31*np.pi/32, 0*np.pi/32, -17*np.pi/32,TIME_PER_STOW_STEP * 2, STOW_JOINT_TOLERANCE),
+    (TrajectoryModes.JOINT_SPACE, 0, 0, -17*np.pi/32,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE), # make the massive swing slower    
     (TrajectoryModes.JOINT_SPACE, 0, 0, 0,TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)  # Final position to ensure the arm is fully unstowed in "L" shape forward
 ]
 
@@ -102,7 +103,7 @@ class ArmNode(Node):
 
 
         # Timers
-        self.create_timer(0.05, self.loop)  # Timer to run the trajectory callback
+        self.create_timer(0.01, self.loop)  # Timer to run the trajectory callback
         self.create_timer(0.2, self.publish_status)  # Timer to publish arm status
         
         # Subscriptions
@@ -298,7 +299,7 @@ class ArmNode(Node):
         t_sec = time_obj.nanoseconds*1e-9 - self.start_move_time_sec - self.init_time_sec # ns to s   
 
         # sort out confusion between sec and ms used here
-        if t_sec > self.end_move_time_sec:
+        if t_sec > self.end_move_time_sec + TIME_MARGIN:
             self.get_logger().warn(f"Trajectory has exceeded normal motion time! t = {t_sec} seconds")
             return
         
@@ -322,6 +323,8 @@ class ArmNode(Node):
         # print("ABC: ",a,b,c)
         print("Current Joints", self.arm.read_arm_position())
         print("SetPoint Joints: ", joints)
+        print("Current Traj Coeffs: ", self.traj_coeffs)
+        print("Current Traj Time: ", t_sec)
         
         if joints is not None and self.kinematics.check_move_safe(joints):
             self.arm.write_arm_joints(joints)
@@ -378,7 +381,7 @@ class ArmNode(Node):
             self.grasp_at_end_move = setpoint[6]      
         
         self.start_move_time_sec = self.get_clock().now().nanoseconds*1e-9 - self.init_time_sec
-        self.end_move_time_sec = self.start_move_time_sec + move_time_sec
+        self.end_move_time_sec = move_time_sec
         
         current_joints_pos = self.arm.read_arm_position()  # Get the current joint positions
         current_joint_vel = self.arm.read_arm_velocity() # Get the current joint velocities
@@ -396,7 +399,7 @@ class ArmNode(Node):
                 start=current_pos, 
                 end=self.goal, 
                 start_vel=current_ee_vel,  # Use current velocity for smoother motion
-                start_time=self.start_move_time_sec,
+                start_time=0.0,
                 end_time=self.end_move_time_sec
             )
             self.trajMode = TrajectoryModes.TASK_SPACE  # Set the trajectory mode to task space
@@ -411,7 +414,7 @@ class ArmNode(Node):
                 start=current_joints_pos, 
                 end=goal_joints,
                 start_vel=current_joint_vel,  # Use current velocity for smoother motion
-                start_time=self.start_move_time_sec,
+                start_time=0.0,
                 end_time=self.end_move_time_sec
             )
             self.trajMode = TrajectoryModes.JOINT_SPACE
@@ -504,12 +507,12 @@ def main(args=None):
     import time
     # node.arm.stow_gripper()
     time.sleep(1)
-    # node.unStowArm()        
-    # node.stowArm()
+    node.unStowArm()        
+    node.stowArm()
     
     #manually send it to a test position using trajectory:
-    node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, 0, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )        
-    node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, -np.pi/4, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )
+    # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, 0, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )        
+    # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, -np.pi/4, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )
 
     rclpy.spin(node)
                    

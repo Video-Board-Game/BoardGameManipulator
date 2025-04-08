@@ -50,7 +50,10 @@ ADDR_MX_PRESENT_VELOCITY = 128      # Address for reading current velocity
 ADDR_MX_PROFILE_VELOCITY = 112      # Address for setting profile velocity
 ADDR_MX_PROFILE_ACCELERATION = 108  # Address for setting profile acceleration
 ADDR_MX_PRESENT_CURRENT = 126 # Address for reading current (only available on some models like XL330 and XM430)
-ADDR_MX_CURRENT_LIMIT = 36 # Address for setting current limit (only available on some models like XL330 and XM430)
+ADDR_MX_CURRENT_LIMIT = 38 # Address for setting current limit (only available on some models like XL330 and XM430)
+ADDR_MX_PROPORTIONAL_TERM = 84 # Address for setting proportional term
+ADDR_MX_INTEGRRAL_TERM = 82 # Address for setting integral term
+ADDR_MX_DERIVATIVE_TERM = 80 # Address for setting derivative term
 
 # Data Byte Length
 LEN_MX_OPERATING_MODE = 1
@@ -63,6 +66,7 @@ LEN_MX_PROFILE_VELOCITY = 4
 LEN_MX_PROFILE_ACCELERATION = 4
 LEN_MX_PRESENT_CURRENT = 2
 LEN_MX_CURRENT = 2 
+LEN_PID_TERM = 2 
 
 
 # Protocol version
@@ -78,6 +82,10 @@ WINDOWS_DEVICENAME = 'COM5' # Windows port, if using windows change this to the 
 TORQUE_ENABLE = 1        # Enable torque
 TORQUE_DISABLE = 0       # Disable torque
 
+MOTOR_PROPORTIONAL = 640
+MOTOR_INTEGRAL = 50
+MOTOR_DERIVATIVE = 2400
+
 OP_MODE_VEL = 1 # Velocity control mode, not used in this case for the arm joints
 OP_MODE_POS = 3 # Position control mode, this is used for the arm joints in this case
 OP_MODE_EXPOS = 4 # Extended Position Mode, useful if rotating beyond 360 degrees, but not used in this case
@@ -86,8 +94,8 @@ OP_MODE_CURPOS = 5 # Current-Based Position mode, this is used for the gripper i
 DXL_ZERO_POSITION = 2048        # Zero position value
 DXL_POSITION_FACTOR = 651.898646904 # Conversion factor from radians to encoder units
 DXL_MOVING_STATUS_THRESHOLD = 20  # Threshold for position error
-DXL_VELOCITY_FACTOR = 41.6999850896 #1/(0.229 * (2 * np.pi) / 60)  # Conversion factor from 1 [rad/s] to 0.229 [rev/min]  
-DXL_ACCELERATION_FACTOR = 2.67017338825 # 1/(214.577 * (2 * np.pi) / 3600)  # Conversion factor from 1 [rad/s^2] to 214.577 [rev/min^2]
+DXL_VELOCITY_FACTOR = 1 / (0.229 * (2 * np.pi) / 60)  # Conversion factor from 1 [rad/s] to 0.229 [rev/min]  
+DXL_ACCELERATION_FACTOR =  1 / (214.577 * (2 * np.pi) / 3600)  # Conversion factor from 1 [rad/s^2] to 214.577 [rev/min^2]
 
 DXL_DRIVE_MODE_VELOCITY = 0b00000000 # Velocity profile drive mode
 DXL_DRIVE_MODE_TIME = 0b00000100 # Time based profile drive mode, unused in this case
@@ -98,7 +106,7 @@ GRIPPER_CLOSE = 1024
 GRIPPER_STOW = 1600 # barely closed for transport, but without risk of overheating
 
 ARM_PROFILE_VELOCITY = 10*np.pi # radians/sec, this is the desired velocity for the arm joints
-ARM_PROFILE_ACCELERATION = 5*np.pi # radians/sec^2, this is the desired acceleration for the arm joints
+ARM_PROFILE_ACCELERATION = 10*np.pi # radians/sec^2, this is the desired acceleration for the arm joints
 GRIPPER_OPEN_PROFILE_VELOCITY = 2*np.pi # radians/sec, this is the desired velocity for the gripper
 GRIPPER_OPEN_PROFILE_ACCELERATION = np.pi # radians/sec^2, this is the desired acceleration for the gripper
 
@@ -144,13 +152,18 @@ class DynamixelArm:
         self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.motor_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.motor_ids]) # Time based profile drive mode for arm joints
         self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.gripper_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.gripper_ids]) # Velocity profile drive mode for gripper
 
+        # Set PID control
+        self.bulk_write(ADDR_MX_PROPORTIONAL_TERM, LEN_PID_TERM, self.motor_ids, [MOTOR_PROPORTIONAL, MOTOR_PROPORTIONAL, MOTOR_PROPORTIONAL]) 
+        self.bulk_write(ADDR_MX_INTEGRRAL_TERM, LEN_PID_TERM, self.motor_ids, [MOTOR_INTEGRAL, MOTOR_INTEGRAL, MOTOR_INTEGRAL])
+        self.bulk_write(ADDR_MX_DERIVATIVE_TERM, LEN_PID_TERM, self.motor_ids, [MOTOR_DERIVATIVE, MOTOR_DERIVATIVE, MOTOR_DERIVATIVE])
+
         # Sets the profile velocity and acceleration for the arm motors 
         self.write_arm_profile(velocity=ARM_PROFILE_VELOCITY, acceleration=ARM_PROFILE_ACCELERATION) # Set profile velocity and acceleration for arm motors, in radians/sec and radians/sec^2 respectively
         # Sets the profile velocity and acceleration for the gripper
         self.write_gripper_profile(velocity=GRIPPER_OPEN_PROFILE_VELOCITY, acceleration=GRIPPER_OPEN_PROFILE_ACCELERATION) # Set profile velocity and acceleration for gripper, in radians/sec and radians/sec^2 respectively
 
         # write gripper current to medium of the byte
-        self.bulk_write(ADDR_MX_CURRENT_LIMIT, LEN_MX_CURRENT, self.gripper_ids, [128]) # current
+        self.bulk_write(ADDR_MX_CURRENT_LIMIT, LEN_MX_CURRENT, self.gripper_ids, [1200]) # current
         
         self.set_arm_torque(enable_at_end)
         self.set_gripper_torque(enable_at_end)
@@ -180,7 +193,8 @@ class DynamixelArm:
            
             if length == 4:
                 dxl_present_position, dxl_comm_result, dxl_error = self.packet_handler.read4ByteTxRx(self.port_handler, id, address)
-                
+            elif length == 2:
+                dxl_present_position, dxl_comm_result, dxl_error = self.packet_handler.read2ByteTxRx(self.port_handler, id, address)  
                 
             else:
                 dxl_present_position, dxl_comm_result, dxl_error = self.packet_handler.read1ByteTxRx(self.port_handler, id, address)
@@ -219,6 +233,8 @@ class DynamixelArm:
 
             if length == 4:
                 dxl_comm_result, dxl_error = self.packet_handler.write4ByteTxRx(self.port_handler, id, address, value)
+            elif length == 2:
+                dxl_comm_result, dxl_error = self.packet_handler.write2ByteTxRx(self.port_handler, id, address, value)
             else:
                 dxl_comm_result, dxl_error = self.packet_handler.write1ByteTxRx(self.port_handler, id, address, value)
 
@@ -366,3 +382,4 @@ class DynamixelArm:
 if __name__ == "__main__":
     
     arm = DynamixelArm()
+    print(arm.read_arm_position())

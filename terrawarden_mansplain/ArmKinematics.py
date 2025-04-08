@@ -183,6 +183,8 @@ class ArmKinematics:
         coeffs = np.zeros((3,6))
         def quintic_traj(start_angle, end_angle, start_vel, end_vel, start_acc, end_acc, start_time, end_time):
             answer_vec = np.array([start_angle, start_vel, start_acc, end_angle, end_vel, end_acc])
+            # print("AnsVec", answer_vec)
+            # print(start_time,end_time)
             polynomial_mat = np.array([
                 [1, start_time, start_time**2, start_time**3, start_time**4, start_time**5],
                 [0, 1, 2*start_time, 3*start_time**2, 4*start_time**3, 5*start_time**4],
@@ -198,7 +200,8 @@ class ArmKinematics:
                 coeffs[i] = np.zeros(6)
             else:
                 # print(start_vel)
-                coeffs[i] = quintic_traj(s,e,0,0,start_vel[i],0,start_time,end_time)
+                # third term can be start_vel[i]
+                coeffs[i] = quintic_traj(s,e,0,0,0,0,start_time,end_time)
 
         return coeffs
     
