@@ -9,7 +9,6 @@ from terrawarden_mansplain.ArmKinematics import ArmKinematics  # Import the ArmK
 from geometry_msgs.msg import PoseStamped
 from terrawarden_interfaces.msg import ArmStatus, ArmCommand
 import numpy as np
-import threading
 
 # TODO: TEST RX ERRORS WITH TASK SPACE TRAJECTORY WHEN ARM AT PI/2
 
@@ -17,6 +16,7 @@ from enum import Enum
 class TrajectoryModes(Enum):
     JOINT_SPACE = "joint"
     TASK_SPACE = "task"
+    LIVE_TRACK = "track"
 
 class Grasps(Enum):
     """
@@ -134,7 +134,6 @@ class ArmNode(Node):
         self.arm.set_arm_torque(False)
         self.arm.set_gripper_torque(False)
 
-
     # Subscription callbacks
 
     def arm_command_callback(self, msg: ArmCommand):
@@ -158,8 +157,6 @@ class ArmNode(Node):
                 if goal_joints is None:
                     self.get_logger().error(f"Cannot calculate joint angles for the given goal position {self.goal}, aborting trajectory.")
                     return
-                self.arm.write_arm_joints(goal_joints)
-                return
                 if msg.grasp_at_end_of_movement:
                     # If grasp at end of movement is requested, add the grasp mode to the setpoint queue
                     self.setpoint_queue = [(TrajectoryModes.JOINT_SPACE, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance, Grasps.CLOSE)]
@@ -167,6 +164,18 @@ class ArmNode(Node):
                     # Otherwise, just set the joint trajectory without grasping 
                     self.setpoint_queue = [(TrajectoryModes.JOINT_SPACE, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance)] 
                 self.get_logger().info(f"New joint goal set: {goal_joints} with movement time: {msg.movement_time}")
+            elif msg.trajectory_mode == TrajectoryModes.LIVE_TRACK.value:
+                # Generate a joint trajectory to the new goal
+                goal_joints = self.kinematics.ik(self.goal[0], self.goal[1], self.goal[2])  # Calculate the joint angles for the goal position
+                if goal_joints is None:
+                    self.get_logger().error(f"Cannot calculate joint angles for the given goal position {self.goal}, aborting trajectory.")
+                    return
+                if msg.grasp_at_end_of_movement:
+                    # If grasp at end of movement is requested, add the grasp mode to the setpoint queue
+                    self.setpoint_queue = [(TrajectoryModes.LIVE_TRACK, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance, Grasps.CLOSE)]
+                else:
+                    # Otherwise, just set the joint trajectory without grasping 
+                    self.setpoint_queue = [(TrajectoryModes.LIVE_TRACK, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance)]
             else:
                 self.get_logger().error(f"Invalid trajectory mode: {msg.trajectory_mode}. Cannot set new trajectory.")
                 return
@@ -342,7 +351,7 @@ class ArmNode(Node):
             a += self.traj_coeffs[0][i] * t_sec**i
             b += self.traj_coeffs[1][i] * t_sec**i
             c += self.traj_coeffs[2][i] * t_sec**i
-            
+
         #if task mode, calculates the joint angles using inverse kinematics
         if self.trajMode == TrajectoryModes.TASK_SPACE:
             joints = self.kinematics.ik(a,b,c)
@@ -418,8 +427,18 @@ class ArmNode(Node):
         current_joint_vel = self.arm.read_arm_velocity() # Get the current joint velocities
         
         # print(f"Setpoint: {setpoint}")
-        
-        if movement_type == TrajectoryModes.TASK_SPACE:
+
+        if movement_type == TrajectoryModes.LIVE_TRACK:
+            self.goal = np.array([setpoint[1], setpoint[2], setpoint[3]])
+
+            if self.kinematics.check_move_safe(self.goal):
+                self.setpoint_queue = []
+                self.get_logger().info(f"Live tracking at: {self.goal}")
+                self.arm.write_arm_joints(self.goal)
+            else:
+                self.get_logger().info(f"Attempted to send arm to illegal position at: {self.goal}")
+
+        elif movement_type == TrajectoryModes.TASK_SPACE:
             # Generate a task trajectory to the new goal
             self.goal = np.array([setpoint[1], setpoint[2], setpoint[3]])  # Update the goal from the setpoint
             current_pos = self.kinematics.fk(current_joints_pos)  # Get the current end-effector position
@@ -495,7 +514,6 @@ class ArmNode(Node):
         # Set by callbacks asynchronously
         # Normal go_to_point callbacks would clear the queue before setting a new setpoint
         # But stow/unstow/more complex motion could be set using this queue setup
-        
 
         if len(self.setpoint_queue) > 0:
             
@@ -528,6 +546,7 @@ class ArmNode(Node):
         else:
             # if the queue is empty, then no trajectory is running
             self.traj_running = False
+    
 
 def main(args=None):
     # Main entry point
@@ -537,7 +556,7 @@ def main(args=None):
     # try:
         # import time
         # time.sleep(1)    
-    node.unStowArm()        
+    # node.unStowArm()        
         # node.stowArm()
         
         #manually send it to a test position using trajectory:

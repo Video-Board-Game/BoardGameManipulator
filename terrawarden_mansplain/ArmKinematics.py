@@ -3,28 +3,34 @@ import numpy as np
 
 class ArmKinematics:
     def __init__(self):
+        # unit in meters
         self.L0 = 0.0275 #shift forward from center of FLU
-        self.L1 = 0.20375-.02
-        self.L2 = np.hypot(.23746,.017)
-        self.L3 = 0.25
-        self.L4 =.02
-        self.jointOffset=np.arctan(17/237.46)
+        self.L1 = 0.20375 - 0.020    # offset down from Pixhawk to end of base link 1
+        self.L2 = np.hypot(0.23746, 0.017)  # link2 length X and Y components since it's offset
+        self.L3 = 0.25  
+        # L4 originally = -0.02
+        # I tried to tune L4 to fix the offset, but increasing it too much caused issues within IK
+        # Would appreciate someone else take a look -K
+        self.L4 = -0.02  # horizontal offset of gripper center
+
+        self.jointOffset=np.arctan(0.017/0.23746)
         self.jointLims = [
             (-np.pi/2, np.pi/2),
             (-np.pi/2, np.pi/2),
             (-np.pi/2, np.pi/2)
         ]
 
-
+        # theta, d, a, alpha
         self.dh_table_const = [
+            # Base Link (1) to Link 2
             [0, -self.L1, 0, np.pi/2],
-            [-np.pi/2+self.jointOffset, 0, self.L2, 0],
-            [np.pi/2-self.jointOffset, -self.L4, self.L3, -np.pi/2]
+            # Link 2 to Link 3
+            [-np.pi/2 + self.jointOffset, 0, self.L2, 0],
+            # Link 3 to EE
+            [np.pi/2 - self.jointOffset, self.L4, self.L3, -np.pi/2]
         ]
 
         
-
-
     def dh2mat(self, joint_val,row):
         """
         Convert Denavit-Hartenberg parameters to a transformation matrix.

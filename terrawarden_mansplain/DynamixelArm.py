@@ -37,9 +37,12 @@ Usage:
     Example usage is provided in the `if __name__ == "__main__":` block.
 """
 from dynamixel_sdk import COMM_SUCCESS, COMM_TX_FAIL
+import functools
 import numpy as np
 import time
 import platform 
+import functools
+import inspect
 # Control table address
 ADDR_MX_OPERATING_MODE = 11         # Address for operating mode
 ADDR_MX_DRIVER_MODE = 10          # Address for driver mode 
@@ -110,7 +113,9 @@ ARM_PROFILE_ACCELERATION = 2*np.pi # radians/sec^2, this is the desired accelera
 GRIPPER_OPEN_PROFILE_VELOCITY = 2*np.pi # radians/sec, this is the desired velocity for the gripper
 GRIPPER_OPEN_PROFILE_ACCELERATION = np.pi # radians/sec^2, this is the desired acceleration for the gripper
 
+
 class DynamixelArm:
+    
     def __init__(self):
         os_name = platform.system()
         deviceName=DEVICENAME
@@ -130,8 +135,34 @@ class DynamixelArm:
         self.motor_ids = [10, 11, 12]
         self.gripper_ids = [13]
 
+        self.configure_motors()        
+        self.apply_reboot_decorator()
+
+    # The following two functions are used to try and avoid TypeErrors which result from an RX call
+    # Giving None due to a bad connection with the dynamixel. Rebooting fixes this
+    # but the decorator seems to only work sometimes??? Something is slightly off, but its better -K
+
+    def reboot_if_disconnect(self, func):
+        """
+        Decorator to reboot dynamixels if there is ever a connection error
+        """
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except TypeError:
+                self.get_logger().error("RX/TX Error with Dynamixels - rebooting and skipping function call...")
+                self.reboot()
+        return wrapper
         
-        self.configure_motors()
+    def apply_reboot_decorator(self):
+        """
+        Helper function to apply decorator to all functions in class
+        Will reboot arm if there is ever a disconnect
+        """
+        for k, f in self.__dict__.items():
+            if inspect.ismethod(f):
+                setattr(self, k, self.reboot_if_disconnect(f))
    
     
     def configure_motors(self, enable_at_end = False):
@@ -168,7 +199,7 @@ class DynamixelArm:
         self.set_arm_torque(enable_at_end)
         self.set_gripper_torque(enable_at_end)
 
-
+    # @reboot_if_disconnect
     def bulk_read(self,address,length,motor_ids):
         """
         Reads data from multiple Dynamixel motors in bulk.
@@ -208,6 +239,7 @@ class DynamixelArm:
             values.append(dxl_present_position)
         return values
         
+    # @reboot_if_disconnect
     def bulk_write(self,address,length,motor_ids,values):
         """
         Performs a bulk write operation to multiple Dynamixel motors.
@@ -373,8 +405,10 @@ class DynamixelArm:
         This method sends a reboot command to all motors in the motor_ids list.
         """
         for id in self.motor_ids:
-            self.packet_handler.reboot(self.port_handler,id)
-        self.packet_handler.reboot(self.port_handler,self.gripper_ids[0])
+            dxl.reboot(self.port_handler, PROTOCOL_VERSION, id)
+            # self.packet_handler.reboot(self.port_handler,id)
+        # self.packet_handler.reboot(self.port_handler,self.gripper_ids[0])
+        dxl.reboot(self.port_handler, PROTOCOL_VERSION, self.gripper_ids[0])
 
     def close(self):
         self.port_handler.closePort()
