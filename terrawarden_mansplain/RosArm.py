@@ -6,7 +6,7 @@ from std_srvs.srv import Empty
 from std_msgs.msg import Float64MultiArray, Bool
 from terrawarden_mansplain.DynamixelArm import DynamixelArm  # Import the DynamixelArm class
 from terrawarden_mansplain.ArmKinematics import ArmKinematics  # Import the ArmKinematics class
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Point, PointStamped
 from terrawarden_interfaces.msg import ArmStatus, ArmCommand
 import numpy as np
 
@@ -78,7 +78,7 @@ class ArmNode(Node):
         self.end_move_time_sec=-1 #time when the trajectory ends
 
         self.traj_coeffs=np.zeros([3,6])
-        self.goal = np.zeros(3) #current goal position
+        self.goal = Point()  #current goal position XYZ
         self.trajMode = TrajectoryModes.TASK_SPACE
         self.traj_running = False  # Flag to indicate if a trajectory is currently running
         self.setpoint_queue = [] # Queue to hold setpoints for the arm to follow, this allows for chaining multiple trajectories together
@@ -93,6 +93,7 @@ class ArmNode(Node):
 
         # Publishers
         self.status_publisher = self.create_publisher(ArmStatus, 'arm_status', 10)  # Publisher for arm status
+        self.pos_publisher = self.create_publisher(PointStamped, 'ee_pos', 10)  # Publisher for arm pos for rviz
 
 
         # Services
@@ -102,7 +103,7 @@ class ArmNode(Node):
 
         # Timers
         self.create_timer(0.01, self.loop)  # Timer to run the trajectory callback
-        self.create_timer(0.2, self.publish_status)  # Timer to publish arm status
+        self.create_timer(0.01, self.publish_status)  # Timer to publish arm status
         
         # Subscriptions
         self.create_subscription(
@@ -140,18 +141,18 @@ class ArmNode(Node):
         self.arm_command = msg  # Store the latest arm command
         #one remaining setpoint in the queue, means that the arm is in tracking or at the end of unstow which is safe to move
         if len(self.setpoint_queue)<2 and not self.check_if_arm_stowed():
-            self.goal = np.array([msg.x, msg.y, msg.z])            
+            self.goal = msg.goal            
             if msg.trajectory_mode == TrajectoryModes.TASK_SPACE.value:
                 # Generate a task trajectory to the new goal
                 # Clear the queue and set the new goal
                 if msg.grasp_at_end_of_movement:
-                    self.setpoint_queue = [(TrajectoryModes.TASK_SPACE, self.goal[0], self.goal[1], self.goal[2], msg.movement_time, msg.tolerance, Grasps.CLOSE)]  
+                    self.setpoint_queue = [(TrajectoryModes.TASK_SPACE, self.goal.x, self.goal.y, self.goal.z, msg.movement_time, msg.tolerance, Grasps.CLOSE)]  
                 else:
-                    self.setpoint_queue = [(TrajectoryModes.TASK_SPACE, self.goal[0], self.goal[1], self.goal[2], msg.movement_time, msg.tolerance)]   
+                    self.setpoint_queue = [(TrajectoryModes.TASK_SPACE, self.goal.x, self.goal.y, self.goal.z, msg.movement_time, msg.tolerance)]   
                 self.get_logger().info(f"New goal set: {self.goal}")
             elif msg.trajectory_mode == TrajectoryModes.JOINT_SPACE.value:
                 # Generate a joint trajectory to the new goal
-                goal_joints = self.kinematics.ik(self.goal[0], self.goal[1], self.goal[2])  # Calculate the joint angles for the goal position
+                goal_joints = self.kinematics.ik(self.goal.x, self.goal.y, self.goal.z)  # Calculate the joint angles for the goal position
                 
                 # Clear the queue and set the new goal
                 if goal_joints is None:
@@ -166,7 +167,7 @@ class ArmNode(Node):
                 self.get_logger().info(f"New joint goal set: {goal_joints} with movement time: {msg.movement_time}")
             elif msg.trajectory_mode == TrajectoryModes.LIVE_TRACK.value:
                 # Generate a joint trajectory to the new goal
-                goal_joints = self.kinematics.ik(self.goal[0], self.goal[1], self.goal[2])  # Calculate the joint angles for the goal position
+                goal_joints = self.kinematics.ik(self.goal.x, self.goal.y, self.goal.z)  # Calculate the joint angles for the goal position
                 if goal_joints is None:
                     self.get_logger().error(f"Cannot calculate joint angles for the given goal position {self.goal}, aborting trajectory.")
                     return
@@ -215,9 +216,13 @@ class ArmNode(Node):
         status_msg.joint3_position = float(armPos[2])
         
         eepos=self.kinematics.fk(armPos)
-        status_msg.ee_x=float(eepos[0][3])
-        status_msg.ee_y=float(eepos[1][3])
-        status_msg.ee_z=float(eepos[2][3])
+        status_msg.ee_pos.x=float(eepos[0][3])
+        status_msg.ee_pos.y=float(eepos[1][3])
+        status_msg.ee_pos.z=float(eepos[2][3])
+        pnt_stmp=PointStamped()
+        pnt_stmp.point=status_msg.ee_pos
+        pnt_stmp.header.frame_id="drone_frame"
+        self.pos_publisher.publish(pnt_stmp)
         
         armVel=self.arm.read_arm_velocity()
         status_msg.joint1_velocity = float(armVel[0])
@@ -429,25 +434,23 @@ class ArmNode(Node):
         # print(f"Setpoint: {setpoint}")
 
         if movement_type == TrajectoryModes.LIVE_TRACK:
-            self.goal = np.array([setpoint[1], setpoint[2], setpoint[3]])
-
-            if self.kinematics.check_move_safe(self.goal):
+            if self.kinematics.check_move_safe(setpoint[1:4]):
                 self.setpoint_queue = []
                 self.get_logger().info(f"Live tracking at: {self.goal}")
-                self.arm.write_arm_joints(self.goal)
+                self.arm.write_arm_joints(setpoint[1:4])
             else:
                 self.get_logger().info(f"Attempted to send arm to illegal position at: {self.goal}")
 
         elif movement_type == TrajectoryModes.TASK_SPACE:
             # Generate a task trajectory to the new goal
-            self.goal = np.array([setpoint[1], setpoint[2], setpoint[3]])  # Update the goal from the setpoint
+            self.goal = Point(x=setpoint[1], y=setpoint[2], z=setpoint[3])  # Update the goal from the setpoint
             current_pos = self.kinematics.fk(current_joints_pos)  # Get the current end-effector position
             current_pos = np.array([current_pos[0][3], current_pos[1][3], current_pos[2][3]])  # Extract the position 
             current_jac = self.kinematics.vk(current_joints_pos)  # Get the Jacobian for the current joint positions
             current_ee_vel = (current_jac @ np.vstack(current_joint_vel)).flatten() if current_jac is not None else np.array([0, 0, 0])
             self.traj_coeffs = self.kinematics.generate_trajectory(
                 start=current_pos, 
-                end=self.goal, 
+                end=setpoint[1:4], 
                 start_vel=current_ee_vel,  # Use current velocity for smoother motion
                 start_time=0.0,
                 end_time=self.end_move_time_sec
