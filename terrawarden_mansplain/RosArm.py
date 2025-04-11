@@ -84,7 +84,7 @@ class ArmNode(Node):
         self.setpoint_queue = [] # Queue to hold setpoints for the arm to follow, this allows for chaining multiple trajectories together
         self.tolerance = 0.005  # Tolerance for task space position checking (meters)
         self.isStowed=False
-        if not self.check_if_arm_stowed(): # Check if the arm is in a stowed position at startup
+        if self.check_if_arm_stowed(): # Check if the arm is in a stowed position at startup
             # is stowed, snap back to position
             self.isStowed = True
 
@@ -556,7 +556,7 @@ def main(args=None):
     rclpy.init(args=args)
     node = ArmNode()    
     
-    # try:
+    try:
         # import time
         # time.sleep(1)    
     # node.unStowArm()        
@@ -566,15 +566,15 @@ def main(args=None):
         # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, 0, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )        
         # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, -np.pi/4, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )
 
-    rclpy.spin(node)
+        rclpy.spin(node)
                    
-    # except Exception as e:
-    #     node.get_logger().error(f"Exception occurred: {str(e)}")
-    #     node.on_shutdown_()    
+    except Exception as e:
+        node.get_logger().error(f"Exception occurred: {str(e)}")
+        node.on_shutdown_()    
     
-    # except KeyboardInterrupt:        
-    #     node.get_logger().info("Keyboard interrupt received, shutting down arm node...")
-    #     node.on_shutdown_()
+    except KeyboardInterrupt:        
+        node.get_logger().info("Keyboard interrupt received, shutting down arm node...")
+        node.on_shutdown_()
 
 if __name__ == '__main__':
     main()

@@ -5,7 +5,8 @@ class ArmKinematics:
     def __init__(self):
         # unit in meters
         self.L0 = 0.0275 # shift forward from center of FLU
-        self.L1 = 0.20375 - 0.020 - 0.02   # offset down from Pixhawk to end of base link 1
+        tuned_vertical_offset = 0.07 # tuned offset to grasp can better
+        self.L1 = 0.20375 - 0.020 + tuned_vertical_offset   # vertical offset down from Pixhawk to end of base link 1
         self.L2 = np.hypot(0.23746, 0.017)  # link2 length X and Y components since it's offset
         self.L3 = 0.25  
         # L4 originally = -0.02

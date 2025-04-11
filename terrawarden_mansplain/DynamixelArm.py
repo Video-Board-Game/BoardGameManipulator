@@ -409,7 +409,7 @@ class DynamixelArm:
             # self.packet_handler.reboot(self.port_handler,id)
         # self.packet_handler.reboot(self.port_handler,self.gripper_ids[0])
         dxl.reboot(self.port_handler, PROTOCOL_VERSION, self.gripper_ids[0])
-
+        
     def close(self):
         self.port_handler.closePort()
 
@@ -417,3 +417,4 @@ if __name__ == "__main__":
     
     arm = DynamixelArm()
     print(arm.read_arm_position())
+    arm.write_arm_joints([0,np.pi/2,-np.pi/2])
