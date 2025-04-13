@@ -344,6 +344,13 @@ class DynamixelArm:
         """
         pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.gripper_ids)[0]
         return pos_dxl/DXL_POSITION_FACTOR - DXL_ZERO_POSITION # Convert from Dynamixel units to radians
+    
+    def read_gripper_goal_position(self):
+        """
+        Reads the goal position of the gripper."
+        """
+        pos_dxl = self.bulk_read(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.gripper_ids)[0]
+        return pos_dxl/DXL_POSITION_FACTOR - DXL_ZERO_POSITION # Convert from Dynamixel units to radians
 
     def write_gripper(self, position):
         """

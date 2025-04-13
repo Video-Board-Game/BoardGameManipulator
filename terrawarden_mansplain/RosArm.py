@@ -29,7 +29,7 @@ class Grasps(Enum):
 
 
 GOAL = np.array([0,0,0])
-GRASP_CURRENT_THRESHOLD = 100  # Threshold for gripper current to consider it grasped (this is arbitrary and should be tuned)
+GRASP_CURRENT_THRESHOLD = 300  # Threshold for gripper current to consider it grasped (this is arbitrary and should be tuned)
 
 # Time in milliseconds for each step, used to space out multi-step routines
 TIME_PER_TRAJ_STEP = 1.2
@@ -320,9 +320,12 @@ class ArmNode(Node):
             bool: True if the gripper is closed (indicating a grasp), False otherwise.
         """
         gripper_cur = self.arm.read_gripper_current()
-        # Assuming a threshold for the gripper current to indicate a grasp
-        if gripper_cur < GRASP_CURRENT_THRESHOLD:
+        gripper_pos = self.arm.read_gripper_position()
+        gripper_goal = self.arm.read_gripper_goal_position()
+        
+        if gripper_pos >= gripper_goal and gripper_cur > GRASP_CURRENT_THRESHOLD:
             return True
+
         return False
 
 
