@@ -104,9 +104,9 @@ DXL_DRIVE_MODE_VELOCITY = 0b00000000 # Velocity profile drive mode
 DXL_DRIVE_MODE_TIME = 0b00000100 # Time based profile drive mode, unused in this case
 
 # gripper positions in encoder ticks
-GRIPPER_OPEN = 3072
-GRIPPER_CLOSE = 1024
-GRIPPER_STOW = 1600 # barely closed for transport, but without risk of overheating
+GRIPPER_OPEN = 2400
+GRIPPER_CLOSE = 300
+GRIPPER_STOW = 800 # barely closed for transport, but without risk of overheating
 
 ARM_PROFILE_VELOCITY = 2*np.pi # radians/sec, this is the desired velocity for the arm joints
 ARM_PROFILE_ACCELERATION = 2*np.pi # radians/sec^2, this is the desired acceleration for the arm joints
