@@ -132,8 +132,9 @@ class DynamixelArm:
         if not self.port_handler.setBaudRate(BAUDRATE):
             raise Exception("Failed to set the baudrate")
 
-        self.motor_ids = [10, 11, 12]
-        self.gripper_ids = [13]
+        self.motor_ids = [21, 22, 23]
+        self.elevator_ids = [24]
+        self.gripper_ids = [25]
 
         self.configure_motors()        
         self.apply_reboot_decorator()
@@ -173,14 +174,17 @@ class DynamixelArm:
 
         # Disable torque to set important register parameters before enabling torque
         self.set_arm_torque(False)
+        self.set_elevator_torque(False)
         self.set_gripper_torque(False)
 
         # Setting operating mode for all motors
         self.bulk_write(ADDR_MX_OPERATING_MODE, LEN_MX_OPERATING_MODE, self.motor_ids, [OP_MODE_POS for i in self.motor_ids]) # regular position control mode for arm joints even though joint 1 can use current based
-        self.bulk_write(ADDR_MX_OPERATING_MODE, LEN_MX_OPERATING_MODE, self.gripper_ids, [OP_MODE_CURPOS for i in self.gripper_ids]) # gripper uses current position mode
+        self.bulk_write(ADDR_MX_OPERATING_MODE, LEN_MX_OPERATING_MODE, self.elevator_ids, [OP_MODE_EXPOS for i in self.elevator_ids]) # elevator uses position control mode
+        self.bulk_write(ADDR_MX_OPERATING_MODE, LEN_MX_OPERATING_MODE, self.gripper_ids, [OP_MODE_EXPOS for i in self.gripper_ids]) # gripper uses current position mode
         
         # Setting driver mode for all motors
         self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.motor_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.motor_ids]) # Time based profile drive mode for arm joints
+        self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.elevator_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.elevator_ids]) # Time based profile drive mode for elevator
         self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.gripper_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.gripper_ids]) # Velocity profile drive mode for gripper
 
         # Set PID control
@@ -190,6 +194,7 @@ class DynamixelArm:
 
         # Sets the profile velocity and acceleration for the arm motors 
         self.write_arm_profile(velocity=ARM_PROFILE_VELOCITY, acceleration=ARM_PROFILE_ACCELERATION) # Set profile velocity and acceleration for arm motors, in radians/sec and radians/sec^2 respectively
+
         # Sets the profile velocity and acceleration for the gripper
         self.write_gripper_profile(velocity=GRIPPER_OPEN_PROFILE_VELOCITY, acceleration=GRIPPER_OPEN_PROFILE_ACCELERATION) # Set profile velocity and acceleration for gripper, in radians/sec and radians/sec^2 respectively
 
@@ -328,6 +333,54 @@ class DynamixelArm:
 
         self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.motor_ids, [velocity_dxl, velocity_dxl, velocity_dxl])
         self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.motor_ids, [acceleration_dxl, acceleration_dxl, acceleration_dxl])
+
+
+    ### ELEVATOR FUNCTIONS ###
+    def set_elevator_torque(self, enable: bool):
+        """
+        Enables or disables the torque for the elevator motor.
+        Args:
+            enable (bool): True to enable torque, False to disable.
+        """
+        self.bulk_write(ADDR_MX_TORQUE_ENABLE, LEN_MX_TORQUE_ENABLE, self.elevator_ids, [enable])
+
+    def read_elevator_position(self):
+        """
+        Reads the current position of the elevator.
+        """
+        pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.elevator_ids)[0]
+        pos = (pos_dxl - DXL_ZERO_POSITION) / DXL_POSITION_FACTOR
+        return pos
+
+    def read_elevator_velocity(self):
+        """
+        Reads the current velocity of the elevator.
+        """
+        vel_dxl = self.bulk_read(ADDR_MX_PRESENT_VELOCITY, LEN_MX_PRESENT_VELOCITY, self.elevator_ids)[0]
+        vel = vel_dxl / DXL_VELOCITY_FACTOR
+        return vel
+
+    def write_elevator_position(self, position):
+        """
+        Writes a target position to the elevator.
+        Args:
+            position (float): The target position for the elevator in radians.
+        """
+        position_dxl = int(position * DXL_POSITION_FACTOR + DXL_ZERO_POSITION)
+        self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.elevator_ids, [position_dxl])
+
+    def write_elevator_profile(self, velocity, acceleration):
+        """
+        Sets the profile velocity and acceleration for the elevator.
+        Args:
+            velocity (float): The desired profile velocity in radians per second.
+            acceleration (float): The desired profile acceleration in radians per second squared.
+        """
+        velocity_dxl = int(velocity * DXL_VELOCITY_FACTOR)  # Convert velocity to Dynamixel units
+        acceleration_dxl = int(acceleration * DXL_ACCELERATION_FACTOR)  # Convert acceleration to Dynamixel units
+
+        self.bulk_write(ADDR_MX_PROFILE_VELOCITY, LEN_MX_PROFILE_VELOCITY, self.elevator_ids, [velocity_dxl])
+        self.bulk_write(ADDR_MX_PROFILE_ACCELERATION, LEN_MX_PROFILE_ACCELERATION, self.elevator_ids, [acceleration_dxl])
 
     ### GRIPPER FUNCTIONS ###
     def set_gripper_torque(self,enable: bool):
