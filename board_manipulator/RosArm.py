@@ -4,10 +4,9 @@ from rclpy.node import Node
 import rclpy.time
 from std_srvs.srv import Empty
 from std_msgs.msg import Float64MultiArray, Bool
-from terrawarden_mansplain.DynamixelArm import DynamixelArm  # Import the DynamixelArm class
-from terrawarden_mansplain.ArmKinematics import ArmKinematics  # Import the ArmKinematics class
+from board_manipulator.DynamixelArm import DynamixelArm  # Import the DynamixelArm class
+from board_manipulator.ArmKinematics import ArmKinematics  # Import the ArmKinematics class
 from geometry_msgs.msg import PoseStamped, Point, PointStamped
-from terrawarden_interfaces.msg import ArmStatus, ArmCommand
 import numpy as np
 
 # TODO: TEST RX ERRORS WITH TASK SPACE TRAJECTORY WHEN ARM AT PI/2

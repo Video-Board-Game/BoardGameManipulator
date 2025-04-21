@@ -4,17 +4,11 @@ import numpy as np
 class ArmKinematics:
     def __init__(self):
         # unit in meters
-        self.L0 = 0.0275 # shift forward from center of FLU
-        tuned_vertical_offset = 0.07 # tuned offset to grasp can better
-        self.L1 = 0.20375 - 0.020 + tuned_vertical_offset   # vertical offset down from Pixhawk to end of base link 1
-        self.L2 = np.hypot(0.23746, 0.017)  # link2 length X and Y components since it's offset
-        self.L3 = 0.25  
-        # L4 originally = -0.02
-        # I tried to tune L4 to fix the offset, but increasing it too much caused issues within IK
-        # Would appreciate someone else take a look -K
-        self.L4 = -0.01  # horizontal offset of gripper center
-
-        self.jointOffset=np.arctan(0.017/0.23746)
+        self.L0 = 0.25 # shift forward from center of FLU
+        self.L1 = np.hypot(0.25, 0.017)  # link2 length X and Y components since it's offset
+        self.L2 = 0.225  
+        self.L3 = 0.1
+        self.jointOffset=np.arctan(0.017/0.25)
         self.jointLims = [
             (-np.pi/2, np.pi/2),
             (-np.pi/2, np.pi/2),
@@ -24,11 +18,11 @@ class ArmKinematics:
         # theta, d, a, alpha
         self.dh_table_const = [
             # Base Link (1) to Link 2
-            [0, -self.L1, 0, np.pi/2],
+            [self.jointOffset-np.pi/2, self.L0, self.L1, 0],
             # Link 2 to Link 3
-            [-np.pi/2 + self.jointOffset, 0, self.L2, 0],
+            [np.pi/2-self.jointOffset , 0, self.L2, 0],
             # Link 3 to EE
-            [np.pi/2 - self.jointOffset, self.L4, self.L3, -np.pi/2]
+            [0, 0, self.L3, 0]
         ]
 
         
@@ -59,77 +53,69 @@ class ArmKinematics:
         T = np.eye(4)
         for i in range(3):
             dir = 1
-            if i == 0:
-                dir = -1#to account for joint0 being flipped since we arent using symbolic DH parameters
             T = T @ self.dh2mat(dir*joints[i],self.dh_table_const[i])
-        T[0][3]=T[0][3]+self.L0 #accounting for center offset from FLU
+        
+        T[0][3]=T[0][3] #accounting for center offset from FLU
         return T
     
-    def ik(self,x,y,z):
+    def ik(self,x,y,alpha):
         """Calculate the inverse kinematics for the given x, y, z position."""
-        x=x-self.L0 #accounting for center offset from FLU
-        joint0 = np.zeros(1)
-        r=np.sqrt(x**2+y**2)
+       
+    
+        xprime = x - self.L3*np.cos(alpha) #accounting for center offset from FLU
+        yprime = y - self.L3*np.sin(alpha) #accounting for center offset from FLU
 
-        offset = np.arcsin(self.L4/r) if r>self.L4 else 0 # to avoid singularity when r < L4
-        # print("offset: ",offset)
-        r = r*np.cos(offset) # adjust r to account for the offset caused by L4
-        initial_theta = np.arctan2(y,x) # initial theta for joint0
-        new_theta = initial_theta - offset # adjust theta to account for the offset caused by L4
-        new__r =r*np.cos(offset)
 
-        joint0[0]=-new_theta # joint0 angle, adjust for L4 offset
-
-        # Now we can proceed with joint1 and joint2 calculations
-
-        # Recenter to RZ plane origin at joint1 base
-        zc = z+self.L1
-        r2 = new__r**2+zc**2
         
-        #lay of cosines for joint2
+        #law of cosines for joint2
         joint2 = np.zeros(2)
-        d2 = (self.L2**2+self.L3**2-r2)/(2*self.L2*self.L3)
+        print(np.hypot(xprime,yprime))
+        d2 = (self.L1**2+self.L2**2-np.hypot(xprime,yprime)**2)/(2*self.L1*self.L2)
         c2 = np.sqrt(1-d2**2)
+        print("d2: ",d2)
+        print("c2: ",c2)
         joint2[0]=np.pi/2+self.jointOffset-np.arctan2(c2,d2)
         joint2[1]=np.pi/2+self.jointOffset-np.arctan2(-c2,d2)
 
         # finding alpha and beta for joint1
-        dbeta = (self.L2**2+r2-self.L3**2)/(2*self.L2*np.sqrt(r2))
+        dbeta = (self.L1**2+xprime**2-self.L2**2)/(2*self.L1*np.sqrt(xprime**2))
         cbeta = np.sqrt(1-dbeta**2)       
         beta=np.zeros(2)
         beta[0]=np.arctan2(cbeta,dbeta)
         beta[1]=np.arctan2(-cbeta,dbeta)
 
-        dalpha = -zc/np.sqrt(r2)
-        calpha = np.sqrt(1-dalpha**2)
-        alpha=np.zeros(2)
-        alpha[0]=np.arctan2(calpha,dalpha)
-        alpha[1]=np.arctan2(-calpha,dalpha)
+        dgamma = xprime/np.hypot(xprime,yprime)
+        cgamma = np.sqrt(1-dgamma**2)
+        gamma=np.zeros(2)
+        gamma[0]=np.arctan2(cgamma,dgamma)
+        gamma[1]=np.arctan2(-cgamma,dgamma)
 
         joint1 = np.zeros(4)
-        joint1[0]=alpha[0]-self.jointOffset-beta[0]
-        joint1[1]=alpha[0]-self.jointOffset-beta[1]
-        joint1[2]=alpha[1]-self.jointOffset-beta[0]
-        joint1[3]=alpha[1]-self.jointOffset-beta[1]
+        joint1[0]=gamma[0]-self.jointOffset-beta[0]
+        joint1[1]=gamma[0]-self.jointOffset-beta[1]
+        joint1[2]=gamma[1]-self.jointOffset-beta[0]
+        joint1[3]=gamma[1]-self.jointOffset-beta[1]
+
+
 
         # Verifying combinations to find correct combinations since with Atan2 to find potential negative angles acos wouldnt
         validAnswer= False
         validJoints = np.zeros(3)
-        print(joint0)
-        print(joint1)
-        print(joint2)
+        print("Joint1: ",joint1)
+        print("Joint2: ",joint2)
         for i in range(4):
-            for j in range(1):
+            
                 for k in range(2):
-                    
-                    joints = np.array([joint0[j],(j*-2+1)*joint1[i],joint2[k]])
+                    joint3=alpha-joint1[i]-joint2[k]
+                    print("Joint3: ",joint3)
+                    joints = np.array([joint1[i],joint2[k],joint3])
                     valid = True
                     for l in range(3):
                         if(joints[l]<self.jointLims[l][0] or joints[l]>self.jointLims[l][1]):
                             valid=False
                             break
                     fkpos=self.fk(joints)
-                    if valid and not ((fkpos[0,3]-x)**2+(fkpos[1,3]-y)**2+(fkpos[2,3]-z)**2<0.01):
+                    if valid and not ((fkpos[0,3]-x)**2+(fkpos[1,3]-y)**2<0.001):
                         valid = False
                     if valid:
                         validAnswer=True
@@ -137,8 +123,7 @@ class ArmKinematics:
                         break
                 if validAnswer:
                     break
-            if validAnswer:
-                break
+            
         # if not validAnswer:
             # print("No valid IK solution found")
             # print("x,y,z: ",x,y,z)
@@ -238,7 +223,8 @@ if __name__ == "__main__":
     arm = ArmKinematics()
     print("Testing Arm Kinematics")
     print("FK: ",arm.fk([0,0,0]))
-    print("VK: ",arm.vk([0,0,0]))
+    print("IK: ",arm.ik(.342,-0.25,0))
+    # print("VK: ",arm.vk([0,0,0]))
     # t = arm.fk([np.pi/6,0,0])
     # print(t)
     # t = arm.ik(t[0][3],t[1][3],t[2][3])

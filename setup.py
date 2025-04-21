@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'terrawarden_mansplain'
+package_name = 'board_manipulator'
 
 setup(
     name=package_name,
@@ -19,7 +19,7 @@ setup(
     license='Apache-2.0',
     entry_points={
         'console_scripts': [
-        	'arm_node = terrawarden_mansplain.RosArm:main',
+        	'arm_node = board_manipulator.RosArm:main',
         ],
     },
 )
