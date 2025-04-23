@@ -9,10 +9,12 @@ class ArmKinematics:
         self.L2 = 0.225  
         self.L3 = 0.1
         self.jointOffset=np.arctan(0.017/0.25)
+        self.distPerRad = .015708 / (2 * np.pi)  # 15.708 is the travel distance of the arm in mm per rotation,
+        
         self.jointLims = [
-            (-np.pi/2, np.pi/2),
-            (-np.pi/2, np.pi/2),
-            (-np.pi/2, np.pi/2)
+            (-np.pi/1.5, np.pi/1.5),
+            (-np.pi, 0),
+            (-np.pi/1.5, np.pi/1.5)
         ]
 
         # theta, d, a, alpha
@@ -20,7 +22,7 @@ class ArmKinematics:
             # Base Link (1) to Link 2
             [self.jointOffset-np.pi/2, self.L0, self.L1, 0],
             # Link 2 to Link 3
-            [np.pi/2-self.jointOffset , 0, self.L2, 0],
+            [np.pi-self.jointOffset , 0, self.L2, 0],
             # Link 3 to EE
             [0, 0, self.L3, 0]
         ]
@@ -56,16 +58,18 @@ class ArmKinematics:
             T = T @ self.dh2mat(dir*joints[i],self.dh_table_const[i])
         
         T[0][3]=T[0][3] #accounting for center offset from FLU
+        if len(joints) > 3:
+            T[2][3] = self.L0 - joints[3] * self.distPerRad  # Adjust Z position based on joint 3 rotation
         return T
     
-    def ik(self,x,y,alpha):
+    def ik(self,x,y,alpha, tolerance = 0.05, debug=False):
         """Calculate the inverse kinematics for the given x, y, z position."""
        
     
         xprime = x - self.L3*np.cos(alpha) #accounting for center offset from FLU
         yprime = y - self.L3*np.sin(alpha) #accounting for center offset from FLU
 
-
+        # print(x,y,alpha)
         
         #law of cosines for joint2
         joint2 = np.zeros(2)
@@ -74,11 +78,11 @@ class ArmKinematics:
         c2 = np.sqrt(1-d2**2)
         print("d2: ",d2)
         print("c2: ",c2)
-        joint2[0]=np.pi/2+self.jointOffset-np.arctan2(c2,d2)
-        joint2[1]=np.pi/2+self.jointOffset-np.arctan2(-c2,d2)
+        joint2[0]=self.jointOffset-np.arctan2(c2,d2)
+        joint2[1]=self.jointOffset-np.arctan2(-c2,d2)
 
         # finding alpha and beta for joint1
-        dbeta = (self.L1**2+xprime**2-self.L2**2)/(2*self.L1*np.sqrt(xprime**2))
+        dbeta = (self.L1**2+np.hypot(xprime,yprime)**2-self.L2**2)/(2*self.L1*np.hypot(xprime,yprime))
         cbeta = np.sqrt(1-dbeta**2)       
         beta=np.zeros(2)
         beta[0]=np.arctan2(cbeta,dbeta)
@@ -101,26 +105,32 @@ class ArmKinematics:
         # Verifying combinations to find correct combinations since with Atan2 to find potential negative angles acos wouldnt
         validAnswer= False
         validJoints = np.zeros(3)
-        print("Joint1: ",joint1)
-        print("Joint2: ",joint2)
+        
         for i in range(4):
             
                 for k in range(2):
-                    joint3=alpha-joint1[i]-joint2[k]
-                    print("Joint3: ",joint3)
-                    joints = np.array([joint1[i],joint2[k],joint3])
+
+                    joint3=alpha-joint1[i]-joint2[k]-np.pi/2
+                    joints = np.array([joint1[i],joint2[k],joint3,0])
                     valid = True
                     for l in range(3):
                         if(joints[l]<self.jointLims[l][0] or joints[l]>self.jointLims[l][1]):
                             valid=False
                             break
+                    
                     fkpos=self.fk(joints)
-                    if valid and not ((fkpos[0,3]-x)**2+(fkpos[1,3]-y)**2<0.001):
-                        valid = False
-                    if valid:
+                    # print("FK: ",fkpos)
+                    if debug:
+                        print("Joints: ",joints)
+                        print("x,y: ",x,y)
+                        print("fkpos: ",fkpos[0,3],fkpos[1,3])
+                        print("Error", np.hypot(fkpos[0,3]-x, fkpos[1,3]-y))
+                        print((np.hypot(fkpos[0,3]-x, fkpos[1,3]-y)<tolerance))
+                    if valid and (np.hypot(fkpos[0,3]-x, fkpos[1,3]-y)<tolerance):
                         validAnswer=True
                         validJoints=joints
                         break
+                    
                 if validAnswer:
                     break
             
@@ -174,6 +184,16 @@ class ArmKinematics:
         jakubian = np.reshape(mt1, (3, 3))   # Reshape to 3x3 
         return jakubian
     
+
+    def calc_elevator_joint(self, z):
+        """
+        Calculate the joint value for the elevator based on the z position.
+        :param z: The z position of the end-effector.
+        :return: The joint value for the elevator.
+        """
+        return (self.L0 - z) / self.distPerRad 
+        
+
     def generate_trajectory(self, start, end, start_vel=[0,0,0], start_time=0, end_time=1):
         # TODO: MAKE THIS FUNCTION ACCOUNT FOR THE ARM'S MAX VELOCITY
         #       AND RETURN AN ADJUSTED END TIME
@@ -222,7 +242,7 @@ class ArmKinematics:
 if __name__ == "__main__":
     arm = ArmKinematics()
     print("Testing Arm Kinematics")
-    print("FK: ",arm.fk([0,0,0]))
+    print("FK: ",arm.fk([0,-np.pi/2,0]))
     print("IK: ",arm.ik(.342,-0.25,0))
     # print("VK: ",arm.vk([0,0,0]))
     # t = arm.fk([np.pi/6,0,0])

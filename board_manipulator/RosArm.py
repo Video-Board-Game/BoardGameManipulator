@@ -7,23 +7,24 @@ from std_msgs.msg import Float64MultiArray, Bool
 from board_manipulator.DynamixelArm import DynamixelArm  # Import the DynamixelArm class
 from board_manipulator.ArmKinematics import ArmKinematics  # Import the ArmKinematics class
 from geometry_msgs.msg import PoseStamped, Point, PointStamped
+from arm_interfaces.msg import ArmStatus, ArmCommand  # Import the custom message types
 import numpy as np
 
 # TODO: TEST RX ERRORS WITH TASK SPACE TRAJECTORY WHEN ARM AT PI/2
 
 from enum import Enum
-class TrajectoryModes(Enum):
+class MoveModes(Enum):
     JOINT_SPACE = "joint"
-    TASK_SPACE = "task"
-    LIVE_TRACK = "track"
+    ELEVATE = "elevate"  
+    
 
 class Grasps(Enum):
     """
     Enum for grasp modes, used to determine how the gripper should behave during a trajectory.
     """
-    OPEN = "open"
-    CLOSE = "close"
-    STOW = "stow" 
+    CARD = "card"  # Used for card grasping, not implemented yet
+    OPEN = "open"  # Used to open the gripper   
+    PIECE = "piece"  # Used for piece grasping, not implemented yet
     NONE = "none"  # Used when no change in grasp is desired
 
 
@@ -35,8 +36,7 @@ TIME_PER_TRAJ_STEP = 1.2
 TIME_MARGIN = 0.0  # seconds, margin for trajectory timing
 
 TIME_PER_STOW_STEP = 0.9  # tuned for not much drone jerk
-STOW_JOINT_MOVE_TOLERANCE = 0.05 # radians, tolerance for stow joint positions, this is to ensure the arm is in a safe stow position
-STOW_JOINT_DETECT_TOLERANCE = tuple([8*np.pi/32, 2*np.pi/32, 4*np.pi/32]) # radians, half-tolerance for joints 2 and 3 to detect if arm is in folded position
+
 
 
 class ArmNode(Node):
@@ -60,14 +60,11 @@ class ArmNode(Node):
         self.traj_coeffs=np.zeros([3,6])
         self.goal = Point()  #current goal position XYZ
         self.alpha = 0.0  # current goal orientation in radians, not used yet
-        self.trajMode = TrajectoryModes.TASK_SPACE
+        self.trajMode = MoveModes.JOINT_SPACE
         self.traj_running = False  # Flag to indicate if a trajectory is currently running
         self.setpoint_queue = [] # Queue to hold setpoints for the arm to follow, this allows for chaining multiple trajectories together
         self.tolerance = 0.005  # Tolerance for task space position checking (meters)
         self.isStowed=False
-        if self.check_if_arm_stowed(): # Check if the arm is in a stowed position at startup
-            # is stowed, snap back to position
-            self.isStowed = True
 
         self.grasp_at_end_move = Grasps.NONE # Flag to indicate if we should grasp at the end of a move, default to False
         self.arm_command = None # Initialize to None, will be set in the callback
@@ -75,10 +72,6 @@ class ArmNode(Node):
         # Publishers
         self.status_publisher = self.create_publisher(ArmStatus, 'arm_status', 10)  # Publisher for arm status
         self.pos_publisher = self.create_publisher(PointStamped, 'ee_pos', 10)  # Publisher for arm pos for rviz
-
-
-
-
 
         # Timers
         self.create_timer(0.01, self.loop)  # Timer to run the trajectory callback
@@ -127,18 +120,18 @@ class ArmNode(Node):
 
             # Generate a joint trajectory to the new goal
             goal_joints = self.kinematics.ik(self.goal.x, self.goal.y, self.alpha )  # Calculate the joint angles for the goal position
+            
+            # Clear the queue and set the new goal
             if goal_joints is None:
                 self.get_logger().error(f"Cannot calculate joint angles for the given goal position {self.goal}, aborting trajectory.")
                 return
-            if msg.grasp_at_end_of_movement:
-                # If grasp at end of movement is requested, add the grasp mode to the setpoint queue
-                self.setpoint_queue = [(TrajectoryModes.LIVE_TRACK, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance, Grasps.CLOSE)]
-            else:
-                # Otherwise, just set the joint trajectory without grasping 
-                self.setpoint_queue = [(TrajectoryModes.LIVE_TRACK, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance)]
             
-            self.get_logger().info(f"Current setpoint queue: {self.setpoint_queue}")
-            self.traj_running=False
+            # Otherwise, just set the joint trajectory without grasping 
+            self.setpoint_queue = [(MoveModes.JOINT_SPACE, goal_joints[0], goal_joints[1], goal_joints[2], msg.movement_time, msg.tolerance)]
+            if msg.grasp_at_end_move is not None and isinstance(msg.grasp_at_end_move, Grasps):
+                self.grasp_at_end_move = msg.grasp_at_end_move
+                self.setpoint_queue.append((MoveModes.ELEVATE, self.goal.z, 0, 0, msg.movement_time, msg.tolerance, msg.grasp_type))
+            self.get_logger().info(f"New joint goal set: {goal_joints} with movement time: {msg.movement_time}")
                       
     def force_grasp_callback(self, msg: Bool):
         """
@@ -232,7 +225,7 @@ class ArmNode(Node):
 
         #if task mode, calculates the joint angles using inverse kinematics
         
-        # Both TrajectoryModes.JOINT_SPACE and TrajectoryModes.STOW use joint space motions
+        # Both MoveModes.JOINT_SPACE and MoveModes.STOW use joint space motions
         joints = np.array([a,b,c])
             
         # print("ABC: ",a,b,c)
@@ -244,10 +237,10 @@ class ArmNode(Node):
         if joints is not None and self.kinematics.check_move_safe(joints):
             self.arm.write_arm_joints(joints)
 
-    def is_in_position(self, setpoint: tuple[TrajectoryModes, float, float, float]):
+    def is_in_position(self, setpoint: tuple[MoveModes, float, float, float]):
         """
             Basic position checking with tolerances variables that don't currently exist :)
-            Function takes in tuple[TrajectoryModes, goal_x, goal_y, goal_z]
+            Function takes in tuple[MoveModes, goal_x, goal_y, goal_z]
             Returns True if the arm is in position, False otherwise
         """
         trajectory_mode = setpoint[0] 
@@ -263,7 +256,7 @@ class ArmNode(Node):
         in_position = True
         
         for i in range(len(current_joint_positions)):
-            if trajectory_mode == TrajectoryModes.TASK_SPACE:
+            if trajectory_mode == MoveModes.TASK_SPACE:
                 # If any of xyz is out of the tolerance, the arm is not in position
                 if abs(current_arm_position[i] - target_position[i]) > self.tolerance:
                     return False
@@ -274,7 +267,7 @@ class ArmNode(Node):
                     return False
         return in_position
     
-    def setNewTrajectory(self, setpoint: tuple[TrajectoryModes, float, float, float, float, float, Grasps] ):
+    def setNewTrajectory(self, setpoint: tuple[MoveModes, float, float, float, float, float, Grasps] ):
         """
             Sets a new trajectory based on the provided setpoint.
             This function will clear the current trajectory and set a new one based on the input setpoint.
@@ -304,32 +297,12 @@ class ArmNode(Node):
         
         # print(f"Setpoint: {setpoint}")
 
-        if movement_type == TrajectoryModes.LIVE_TRACK:
-            if self.kinematics.check_move_safe(setpoint[1:4]):
-                self.setpoint_queue = []
-                self.get_logger().info(f"Live tracking at: {self.goal}")
-                self.arm.write_arm_joints(setpoint[1:4])
-            else:
-                self.get_logger().info(f"Attempted to send arm to illegal position at: {self.goal}")
+        if movement_type == MoveModes.ELEVATE:
+            elevator_position = setpoint[1]  # Extract the elevator position from the setpoint
+            self.arm.write_elevator_position(elevator_position)
+           
 
-        elif movement_type == TrajectoryModes.TASK_SPACE:
-            # Generate a task trajectory to the new goal
-            self.goal = Point(x=setpoint[1], y=setpoint[2], z=setpoint[3])  # Update the goal from the setpoint
-            current_pos = self.kinematics.fk(current_joints_pos)  # Get the current end-effector position
-            current_pos = np.array([current_pos[0][3], current_pos[1][3], current_pos[2][3]])  # Extract the position 
-            current_jac = self.kinematics.vk(current_joints_pos)  # Get the Jacobian for the current joint positions
-            current_ee_vel = (current_jac @ np.vstack(current_joint_vel)).flatten() if current_jac is not None else np.array([0, 0, 0])
-            self.traj_coeffs = self.kinematics.generate_trajectory(
-                start=current_pos, 
-                end=setpoint[1:4], 
-                start_vel=current_ee_vel,  # Use current velocity for smoother motion
-                start_time=0.0,
-                end_time=self.end_move_time_sec
-            )
-            self.trajMode = TrajectoryModes.TASK_SPACE  # Set the trajectory mode to task space
-            self.get_logger().info(f"New task goal set: {self.goal} with movement time: {move_time_sec}")  # Log the new goal and movement time
-            
-        elif movement_type == TrajectoryModes.JOINT_SPACE:
+        elif movement_type == MoveModes.JOINT_SPACE:
             goal_joints = np.array([setpoint[1], setpoint[2], setpoint[3]])  # Calculate the joint angles for the goal position
             # fk_pos = self.kinematics.fk(goal_joints)  # Ensure the goal joints are valid by checking FK
             # self.goal = np.array([fk_pos[0][3], fk_pos[1][3], fk_pos[2][3]])  # Update the goal based on FK to ensure it's correct
@@ -341,33 +314,17 @@ class ArmNode(Node):
                 start_time=0.0,
                 end_time=self.end_move_time_sec
             )
-            self.trajMode = TrajectoryModes.JOINT_SPACE
+            self.trajMode = MoveModes.JOINT_SPACE
             self.get_logger().info(f"New joint goal set: {goal_joints} with movement time: {move_time_sec}")
         else:
             self.get_logger().error(f"Invalid trajectory mode: {movement_type}. Cannot set new trajectory.")
             
         self.traj_running = True  # Set trajectory running to true, so the loop will process it
+    
 
+    #TODO
     def execute_grasp_at_end_move(self):
-        if self.grasp_at_end_move == Grasps.CLOSE:
-            """
-                Execute a grasp at the end of the move if requested
-            """
-            self.arm.close_gripper()
-            self.get_logger().info("Gripper closed at end of move.")
-        elif self.grasp_at_end_move == Grasps.OPEN:
-            """
-                Execute an open grasp at the end of the move if requested
-            """
-            self.arm.open_gripper()
-            self.get_logger().info("Gripper opened at end of move.")
-        elif self.grasp_at_end_move == Grasps.STOW:
-            """
-                Execute a stow grasp at the end of the move if requested
-                This is a special case for stowing the gripper at the end of a trajectory
-            """
-            self.arm.stow_gripper()
-            self.get_logger().info("Gripper stowed at end of move.")
+       self.arm.write_gripper(2048)  # Execute the grasp at the end of the move if needed
         
 
     def loop(self):
@@ -434,8 +391,8 @@ def main(args=None):
         # node.stowArm()
         
         #manually send it to a test position using trajectory:
-        # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, 0, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )        
-        # node.setpoint_queue.append(  (TrajectoryModes.JOINT_SPACE, -np.pi/4, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )
+        # node.setpoint_queue.append(  (MoveModes.JOINT_SPACE, 0, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )        
+        # node.setpoint_queue.append(  (MoveModes.JOINT_SPACE, -np.pi/4, 0, 0, TIME_PER_STOW_STEP, STOW_JOINT_TOLERANCE)   )
 
         rclpy.spin(node)
                    
