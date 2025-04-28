@@ -108,9 +108,12 @@ GRIPPER_OPEN = 2400
 GRIPPER_CLOSE = 300
 GRIPPER_STOW = 800 # barely closed for transport, but without risk of overheating
 
-ARM_PROFILE_VELOCITY = 2*np.pi # radians/sec, this is the desired velocity for the arm joints
-ARM_PROFILE_ACCELERATION = 2*np.pi # radians/sec^2, this is the desired acceleration for the arm joints
-GRIPPER_OPEN_PROFILE_VELOCITY = 2*np.pi # radians/sec, this is the desired velocity for the gripper
+GRIPPER_CLOSE = 2648
+ELEVATOR_ZERO_POSITION = 3915
+
+ARM_PROFILE_VELOCITY = 1*np.pi # radians/sec, this is the desired velocity for the arm joints
+ARM_PROFILE_ACCELERATION = 1*np.pi # radians/sec^2, this is the desired acceleration for the arm joints
+GRIPPER_OPEN_PROFILE_VELOCITY = 1*np.pi # radians/sec, this is the desired velocity for the gripper
 GRIPPER_OPEN_PROFILE_ACCELERATION = np.pi # radians/sec^2, this is the desired acceleration for the gripper
 
 
@@ -183,9 +186,9 @@ class DynamixelArm:
         self.bulk_write(ADDR_MX_OPERATING_MODE, LEN_MX_OPERATING_MODE, self.gripper_ids, [OP_MODE_EXPOS for i in self.gripper_ids]) # gripper uses current position mode
         
         # Setting driver mode for all motors
-        self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.motor_ids, [DXL_DRIVE_MODE_TIME for i in self.motor_ids]) # Time based profile drive mode for arm joints
-        self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.elevator_ids, [DXL_DRIVE_MODE_TIME for i in self.elevator_ids]) # Time based profile drive mode for elevator
-        self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.gripper_ids, [DXL_DRIVE_MODE_TIME for i in self.gripper_ids]) # Velocity profile drive mode for gripper
+        self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.motor_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.motor_ids]) # Time based profile drive mode for arm joints
+        self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.elevator_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.elevator_ids]) # Time based profile drive mode for elevator
+        self.bulk_write(ADDR_MX_DRIVER_MODE, LEN_MX_DRIVER_MODE, self.gripper_ids, [DXL_DRIVE_MODE_VELOCITY for i in self.gripper_ids]) # Velocity profile drive mode for gripper
 
         # Set PID control
         self.bulk_write(ADDR_MX_PROPORTIONAL_TERM, LEN_PID_TERM, self.motor_ids, [MOTOR_PROPORTIONAL, MOTOR_PROPORTIONAL, MOTOR_PROPORTIONAL]) 
@@ -202,7 +205,7 @@ class DynamixelArm:
         self.write_gripper_profile(velocity=GRIPPER_OPEN_PROFILE_VELOCITY, acceleration=GRIPPER_OPEN_PROFILE_ACCELERATION) # Set profile velocity and acceleration for gripper, in radians/sec and radians/sec^2 respectively
 
         # write gripper current to medium of the byte
-        self.bulk_write(ADDR_MX_CURRENT_LIMIT, LEN_MX_CURRENT, self.gripper_ids, [1200]) # current
+        # self.bulk_write(ADDR_MX_CURRENT_LIMIT, LEN_MX_CURRENT, self.gripper_ids, [1200]) # current
         
         self.set_arm_torque(enable_at_end)
         self.set_gripper_torque(enable_at_end)
@@ -331,6 +334,8 @@ class DynamixelArm:
             acceleration (float): The desired profile acceleration in radians per second squared.
         """
 
+        # velocity_dxl = int(velocity * 1) # Convert velocity to Dynamixel units
+        # acceleration_dxl = int(acceleration * 1)
         velocity_dxl = int(velocity * DXL_VELOCITY_FACTOR) # Convert velocity to Dynamixel units
         acceleration_dxl = int(acceleration * DXL_ACCELERATION_FACTOR) # Convert acceleration to Dynamixel units
 
@@ -352,7 +357,7 @@ class DynamixelArm:
         Reads the current position of the elevator.
         """
         pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.elevator_ids)[0]
-        pos = (pos_dxl - DXL_ZERO_POSITION) / DXL_POSITION_FACTOR
+        pos = (pos_dxl - ELEVATOR_ZERO_POSITION) / DXL_POSITION_FACTOR
         return pos
 
     def read_elevator_velocity(self):
@@ -369,7 +374,7 @@ class DynamixelArm:
         Args:
             position (float): The target position for the elevator in radians.
         """
-        position_dxl = int(position * DXL_POSITION_FACTOR + DXL_ZERO_POSITION)
+        position_dxl = int(position * DXL_POSITION_FACTOR + ELEVATOR_ZERO_POSITION)
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.elevator_ids, [position_dxl])
 
     def write_elevator_profile(self, velocity, acceleration):
@@ -399,14 +404,14 @@ class DynamixelArm:
         Reads the current position of the gripper."
         """
         pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.gripper_ids)[0]
-        return pos_dxl/DXL_POSITION_FACTOR - DXL_ZERO_POSITION # Convert from Dynamixel units to radians
+        return pos_dxl/DXL_POSITION_FACTOR  # Convert from Dynamixel units to radians
     
     def read_gripper_goal_position(self):
         """
         Reads the goal position of the gripper."
         """
         pos_dxl = self.bulk_read(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.gripper_ids)[0]
-        return pos_dxl/DXL_POSITION_FACTOR - DXL_ZERO_POSITION # Convert from Dynamixel units to radians
+        return pos_dxl/DXL_POSITION_FACTOR  # Convert from Dynamixel units to radians
 
     def write_gripper(self, position):
         """
@@ -414,7 +419,7 @@ class DynamixelArm:
         Args:
             position (int): The target position for the gripper.
         """
-        position = int(position * DXL_POSITION_FACTOR + DXL_ZERO_POSITION)  # Convert position to Dynamixel units
+        position = int(position * DXL_POSITION_FACTOR)  # Convert position to Dynamixel units
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.gripper_ids, [position])
 
     def read_gripper_current(self):
@@ -481,5 +486,10 @@ if __name__ == "__main__":
     
     arm = DynamixelArm()
     # print(arm.read_arm_position())
-    arm.write_arm_joints([0, 0, 0])
+    # arm.write_arm_joints([0, 0, 0])
+    arm.set_arm_torque(False)
+    arm.set_gripper_torque(False)
+    arm.set_elevator_torque(False)
+    # print(2648/DXL_POSITION_FACTOR)
+
     

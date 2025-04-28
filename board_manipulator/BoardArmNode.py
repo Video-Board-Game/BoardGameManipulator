@@ -23,14 +23,13 @@ class Grasps(Enum):
     Enum for grasp modes, used to determine how the gripper should behave during a trajectory.
     Each mode is associated with a float value representing the gripper's target position.
     """
-    CARD = ("card", 0.2)  # Used for card grasping, not implemented yet
-    OPEN = ("open", 1.0)  # Used to open the gripper
-    PIECE = ("piece", 0.5)  # Used for piece grasping, not implemented yet
+    CARD = ("card", -3*np.pi)  # Used for card grasping, not implemented yet
+    OPEN = ("open", -2*np.pi)  # Used to open the gripper
+    PIECE = ("piece", 4.061981126323691-np.pi/3)  # Used for piece grasping, not implemented yet
+    CLOSE = ("close", 4.061981126323691)  # Used to close the gripper
     NONE = ("none", 0.0)  # Used when no change in grasp is desired
 
-    def __init__(self, label, value):
-        self.label = label
-        self.value = value
+    
 
 
 class ArmManipulatorNode(Node):
@@ -67,6 +66,12 @@ class ArmManipulatorNode(Node):
         # Create a subscriber for arm commands
         self.command_subscriber = self.create_subscription(ArmCommand, 'arm_command', self.receive_arm_command, 10)
     
+    def shutdown(self):
+        self.arm.write_gripper(Grasps.NONE.value)  # Ensure the gripper is released on shutdown
+        self.arm.write_elevator_position(0)  # Reset the elevator position
+        self.arm.set_arm_torque(False)  # Disable arm torque
+
+
     def publish_status(self):
         """
         Publishes the current status of the robotic arm.
@@ -175,7 +180,16 @@ class ArmManipulatorNode(Node):
 if __name__ == '__main__':
     rclpy.init()
     node = ArmManipulatorNode()
-    
+    fk=node.kinematics.fk([np.pi/6,0,0])
+    armcommand = ArmCommand()
+    armcommand.move_type = ArmCommand.MoveType.JOINT_SPACE
+    armcommand.goal.x = fk[0][3]
+    armcommand.goal.y = fk[1][3]
+    armcommand.goal.z = fk[2][3]
+    armcommand.alpha = 0.0
+    armcommand.movement_time = 2.0
+    armcommand.grasp_type = Grasps.OPEN.value  # Open the gripper at the start
+    node.arm.write_arm_joints([0, 0, 0])
    
     
     try:

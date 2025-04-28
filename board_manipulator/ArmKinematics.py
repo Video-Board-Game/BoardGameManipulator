@@ -4,13 +4,13 @@ import numpy as np
 class ArmKinematics:
     def __init__(self):
         # unit in meters
-        self.L0 = 0.25 # shift forward from center of FLU
+        self.L0 = 0.25 
         self.L1 = np.hypot(0.25, 0.017)  # link2 length X and Y components since it's offset
         self.L2 = 0.225  
         self.L3 = 0.1
         self.jointOffset=np.arctan(0.017/0.25)
         self.distPerRad = .015708 / (2 * np.pi)  # 15.708 is the travel distance of the arm in mm per rotation,
-        
+        self.gripheight=.1
         self.jointLims = [
             (-np.pi/1.5, np.pi/1.5),
             (-np.pi, 0),
@@ -242,8 +242,6 @@ class ArmKinematics:
 if __name__ == "__main__":
     arm = ArmKinematics()
     print("Testing Arm Kinematics")
-    print("FK: ",arm.fk([0,-np.pi/2,0]))
-    print("IK: ",arm.ik(.342,-0.25,0))
     # print("VK: ",arm.vk([0,0,0]))
     # t = arm.fk([np.pi/6,0,0])
     # print(t)
