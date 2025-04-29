@@ -19,7 +19,7 @@ setup(
     license='Apache-2.0',
     entry_points={
         'console_scripts': [
-        	'arm_node = board_manipulator.RosArm:main',
+        	'board_arm_node = board_manipulator.BoardArmNode:main',
         ],
     },
 )

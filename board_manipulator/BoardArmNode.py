@@ -9,7 +9,7 @@ from board_manipulator.ArmKinematics import ArmKinematics  # Import the ArmKinem
 from geometry_msgs.msg import PoseStamped, Point, Pose
 from arm_interfaces.msg import ArmStatus, ArmCommand  # Import the custom message types
 import numpy as np
-
+import time
 
 from enum import Enum
 class MoveModes(Enum):
@@ -23,7 +23,8 @@ class Grasps(Enum):
     Enum for grasp modes, used to determine how the gripper should behave during a trajectory.
     Each mode is associated with a float value representing the gripper's target position.
     """
-    CARD = ("card", -3*np.pi)  # Used for card grasping, not implemented yet
+    CARD = ("card", -4.7*np.pi)  
+    SQUEEZE = ("squeeze", -5.2*np.pi) 
     OPEN = ("open", -2*np.pi)  # Used to open the gripper
     PIECE = ("piece", 4.061981126323691-np.pi/3)  # Used for piece grasping, not implemented yet
     CLOSE = ("close", 4.061981126323691)  # Used to close the gripper
@@ -65,6 +66,8 @@ class ArmManipulatorNode(Node):
         
         # Create a subscriber for arm commands
         self.command_subscriber = self.create_subscription(ArmCommand, 'arm_command', self.receive_arm_command, 10)
+
+        self.armcommand=None
     
     def shutdown(self):
         self.arm.write_gripper(Grasps.NONE.value)  # Ensure the gripper is released on shutdown
@@ -105,15 +108,18 @@ class ArmManipulatorNode(Node):
         self.status_publisher.publish(status_msg)
 
     def receive_arm_command(self, msg: ArmCommand):
-        moveType = ArmCommand.MoveType(msg.move_type)
+        moveType = MoveModes(msg.trajectory_mode)
+        self.armcommand=msg
         self.get_logger().info(f"Received arm command: {moveType}")
-        if moveType == ArmCommand.MoveType.JOINT_SPACE:
+        if moveType == MoveModes.JOINT_SPACE:
             self.move_mode = MoveModes.JOINT_SPACE
             self.setpoint_queue.append((MoveModes.JOINT_SPACE, msg.goal.x, msg.goal.y, msg.alpha,msg.movement_time))
-        elif moveType == ArmCommand.MoveType.ELEVATE:
+        elif moveType == MoveModes.ELEVATE:
             self.move_mode = MoveModes.ELEVATE
-            self.setpoint_queue.append((MoveModes.ELEVATE,self.kinematics.calc_elevator_position(msg.goal.z),0,0, msg.movement_time))
-        elif moveType == ArmCommand.MoveType.GRIP:
+            
+            self.setpoint_queue.append((MoveModes.ELEVATE,msg.goal.z,0,0, msg.movement_time))
+            
+        elif moveType == MoveModes.GRIP:
             self.move_mode = MoveModes.GRIP
             self.grasp_at_end = Grasps(msg.grasp_type)
             self.setpoint_queue.append((MoveModes.GRIP, self.grasp_at_end.value, 0, 0, msg.movement_time))
@@ -129,28 +135,35 @@ class ArmManipulatorNode(Node):
         trajectory_mode = self.current_setpoint[0] 
         target_position = np.array([self.current_setpoint[1], self.current_setpoint[2], self.current_setpoint[3]])  # Extract the target position from the setpoint
         
-        if self.current_setpoint == MoveModes.JOINT_SPACE:
+        if self.current_setpoint[0] == MoveModes.JOINT_SPACE:
             # For joint space mode, we need to check against the current joint positions
             target_position = np.array(self.current_setpoint[1:4])
             current_joint_positions = self.arm.read_arm_position()
             for i in range(len(current_joint_positions)):
                 if abs(current_joint_positions[i] - target_position[i]) > self.tolerance:
                     return False
-        elif self.current_setpoint == MoveModes.ELEVATE:
+                
+            return True  # All joint positions are within tolerance
+        elif self.current_setpoint[0] == MoveModes.ELEVATE:
             target_position = self.kinematics.calc_elevator_joint(self.current_setpoint[1])
             current_joint_position = self.arm.read_elevator_position()
-            if abs(current_joint_position - target_position) > self.tolerance:
+            print(f"Checking elevator position: target={target_position}, current={current_joint_position}")
+            if abs(current_joint_position - target_position) > self.tolerance/100:
                 return False
-        elif self.current_setpoint == MoveModes.GRIP:
+            else: 
+                return True  # Elevator position is within tolerance
+        elif self.current_setpoint[0] == MoveModes.GRIP:
             # For grip mode, we check if the gripper is in the desired position
             target_position = self.current_setpoint[1]
             current_gripper_position = self.arm.read_gripper_position()
             if abs(current_gripper_position - target_position) > self.tolerance:
                 return False
+            else:
+                return True
         elif self.current_setpoint is None:
             self.get_logger().warn("No current setpoint to check position against.")
             return False
-        return True
+        return False
             
         
     
@@ -160,14 +173,19 @@ class ArmManipulatorNode(Node):
         """
         if not self.setpoint_queue:
             return
+        
         if not self.current_setpoint:
-            self.current_setpoint = self.setpoint_queue[0]
+            self.current_setpoint = self.setpoint_queue.pop(0)  # Get the next setpoint from the queue
 
             if self.current_setpoint is not None:
                 if self.move_mode == MoveModes.JOINT_SPACE:
+                    print(f"Moving arm to joint space setpoint: {self.current_setpoint[1:4]}")
                     self.arm.write_arm_joints(self.current_setpoint[1:4])
                 elif self.move_mode == MoveModes.ELEVATE:
-                    self.arm.write_elevator_position(self.kinematics.calc_elevator_joint(self.current_setpoint[1]))
+                    print(self.armcommand)
+                    print("Moving arm to elevator setpoint: ", self.current_setpoint)
+                    
+                    self.arm.write_elevator_position(self.kinematics.calc_elevator_joint(self.current_setpoint[1]), debug=True)
                 elif self.move_mode == MoveModes.GRIP:
                     self.arm.write_gripper(self.current_setpoint[1])
                 else:
@@ -180,21 +198,28 @@ class ArmManipulatorNode(Node):
 if __name__ == '__main__':
     rclpy.init()
     node = ArmManipulatorNode()
-    fk=node.kinematics.fk([np.pi/6,0,0])
+    fk=node.kinematics.fk([0,0,0])
+    node.arm.set_elevator_torque(True)  # Enable elevator torque
     armcommand = ArmCommand()
-    armcommand.move_type = ArmCommand.MoveType.JOINT_SPACE
+    armcommand.trajectory_mode = MoveModes.ELEVATE.value
     armcommand.goal.x = fk[0][3]
     armcommand.goal.y = fk[1][3]
-    armcommand.goal.z = fk[2][3]
+    armcommand.goal.z = .05
     armcommand.alpha = 0.0
     armcommand.movement_time = 2.0
-    armcommand.grasp_type = Grasps.OPEN.value  # Open the gripper at the start
+    node.receive_arm_command(armcommand)  # Simulate receiving a command to move the arm
+    # armcommand.grasp_type = Grasps.OPEN.value  # Open the gripper at the start
     node.arm.write_arm_joints([0, 0, 0])
+    node.arm.write_gripper(Grasps.OPEN.value[1])
    
     
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        node.arm.set_arm_torque(False)  # Disable arm torque on shutdown
+        node.arm.write_elevator_position(0)
+        # node.arm.set_elevator_torque(False)  # Disable elevator torque on shutdown
+        node.arm.set_gripper_torque(False)
         pass
     finally:
         node.destroy_node()

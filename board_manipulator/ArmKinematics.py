@@ -4,12 +4,12 @@ import numpy as np
 class ArmKinematics:
     def __init__(self):
         # unit in meters
-        self.L0 = 0.25 
-        self.L1 = np.hypot(0.25, 0.017)  # link2 length X and Y components since it's offset
+        self.L0 = 0.07 
+        self.L1 = np.hypot(0.22, 0.017)  # link2 length X and Y components since it's offset
         self.L2 = 0.225  
         self.L3 = 0.1
-        self.jointOffset=np.arctan(0.017/0.25)
-        self.distPerRad = .015708 / (2 * np.pi)  # 15.708 is the travel distance of the arm in mm per rotation,
+        self.jointOffset=np.arctan(0.017/0.22)
+        self.distPerRad = .015708 / (np.pi*2)  # 15.708 is the travel distance of the elevator in mm per rotation,
         self.gripheight=.1
         self.jointLims = [
             (-np.pi/1.5, np.pi/1.5),
@@ -22,7 +22,7 @@ class ArmKinematics:
             # Base Link (1) to Link 2
             [self.jointOffset-np.pi/2, self.L0, self.L1, 0],
             # Link 2 to Link 3
-            [np.pi-self.jointOffset , 0, self.L2, 0],
+            [np.pi/2-self.jointOffset , 0, self.L2, 0],
             # Link 3 to EE
             [0, 0, self.L3, 0]
         ]
@@ -78,8 +78,8 @@ class ArmKinematics:
         c2 = np.sqrt(1-d2**2)
         print("d2: ",d2)
         print("c2: ",c2)
-        joint2[0]=self.jointOffset-np.arctan2(c2,d2)
-        joint2[1]=self.jointOffset-np.arctan2(-c2,d2)
+        joint2[0]=np.pi/2+self.jointOffset-np.arctan2(c2,d2)
+        joint2[1]=np.pi/2+self.jointOffset-np.arctan2(-c2,d2)
 
         # finding alpha and beta for joint1
         dbeta = (self.L1**2+np.hypot(xprime,yprime)**2-self.L2**2)/(2*self.L1*np.hypot(xprime,yprime))
@@ -110,7 +110,7 @@ class ArmKinematics:
             
                 for k in range(2):
 
-                    joint3=alpha-joint1[i]-joint2[k]-np.pi/2
+                    joint3=alpha-joint1[i]-joint2[k]
                     joints = np.array([joint1[i],joint2[k],joint3,0])
                     valid = True
                     for l in range(3):
@@ -191,7 +191,7 @@ class ArmKinematics:
         :param z: The z position of the end-effector.
         :return: The joint value for the elevator.
         """
-        return (self.L0 - z) / self.distPerRad 
+        return (z-self.L0) / self.distPerRad 
         
 
     def generate_trajectory(self, start, end, start_vel=[0,0,0], start_time=0, end_time=1):
@@ -243,10 +243,11 @@ if __name__ == "__main__":
     arm = ArmKinematics()
     print("Testing Arm Kinematics")
     # print("VK: ",arm.vk([0,0,0]))
-    # t = arm.fk([np.pi/6,0,0])
-    # print(t)
-    # t = arm.ik(t[0][3],t[1][3],t[2][3])
-    # print(t)
+    t = arm.fk([0,0,0])
+    print(t)
+    t = arm.calc_elevator_joint(0.05)
+    print(t)
+
     # print(np.pi/6)
     # v=arm.vk([0,0,0])
     # print(v)

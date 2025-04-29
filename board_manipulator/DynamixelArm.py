@@ -208,6 +208,7 @@ class DynamixelArm:
         # self.bulk_write(ADDR_MX_CURRENT_LIMIT, LEN_MX_CURRENT, self.gripper_ids, [1200]) # current
         
         self.set_arm_torque(enable_at_end)
+        self.set_elevator_torque(enable_at_end)  # Enable torque for elevator motors
         self.set_gripper_torque(enable_at_end)
 
     # @reboot_if_disconnect
@@ -302,7 +303,7 @@ class DynamixelArm:
         Reads the current positions of the arm joints and gripper."
         """
         pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.motor_ids)  
-        pos = [(p - DXL_ZERO_POSITION) * direction / (DXL_POSITION_FACTOR) for p, direction in zip(pos_dxl, [1, -1, -1])]
+        pos = [(p - DXL_ZERO_POSITION) * direction / (DXL_POSITION_FACTOR) for p, direction in zip(pos_dxl, [1,1,1])]
        
         return pos
         
@@ -312,7 +313,7 @@ class DynamixelArm:
         Reads the current velocities of the arm joints."
         """
         vels_dxl = self.bulk_read(ADDR_MX_PRESENT_VELOCITY, LEN_MX_PRESENT_VELOCITY, self.motor_ids)  #dynamixel returns 
-        vels = [vel * direction / DXL_VELOCITY_FACTOR for vel, direction in zip(vels_dxl, [1, -1, -1])]
+        vels = [vel * direction / DXL_VELOCITY_FACTOR for vel, direction in zip(vels_dxl, [1,1,1])]
         
         return vels
     
@@ -323,7 +324,7 @@ class DynamixelArm:
         Args:
             positions (list[float]): A list of target positions for the arm joints.
         """
-        positions = [int(position*direction*DXL_POSITION_FACTOR+DXL_ZERO_POSITION) for position, direction in zip(positions,[1,-1,-1])]
+        positions = [int(position*direction*DXL_POSITION_FACTOR+DXL_ZERO_POSITION) for position, direction in zip(positions,[1,1,1])]
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.motor_ids, positions)
 
     def write_arm_profile(self, velocity, acceleration):
@@ -368,13 +369,15 @@ class DynamixelArm:
         vel = vel_dxl / DXL_VELOCITY_FACTOR
         return vel
 
-    def write_elevator_position(self, position):
+    def write_elevator_position(self, position,debug = False):
         """
         Writes a target position to the elevator.
         Args:
             position (float): The target position for the elevator in radians.
         """
         position_dxl = int(position * DXL_POSITION_FACTOR + ELEVATOR_ZERO_POSITION)
+        if debug:
+            print(f"Writing elevator position: {position} (Dynamixel: {position_dxl})")
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.elevator_ids, [position_dxl])
 
     def write_elevator_profile(self, velocity, acceleration):
@@ -419,6 +422,7 @@ class DynamixelArm:
         Args:
             position (int): The target position for the gripper.
         """
+        
         position = int(position * DXL_POSITION_FACTOR)  # Convert position to Dynamixel units
         self.bulk_write(ADDR_MX_GOAL_POSITION, LEN_MX_GOAL_POSITION, self.gripper_ids, [position])
 
