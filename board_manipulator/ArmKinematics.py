@@ -7,8 +7,9 @@ class ArmKinematics:
         self.L0 = 0.07 
         self.L1 = np.hypot(0.22, 0.017)  # link2 length X and Y components since it's offset
         self.L2 = 0.225  
-        self.L3 = 0.1
+        self.L3 = np.hypot(.012235,.163)
         self.jointOffset=np.arctan(0.017/0.22)
+        self.jointOffset2 = np.arctan(0.012235/0.163)  # offset for joint 2, used in inverse kinematics
         self.distPerRad = .015708 / (np.pi*2)  # 15.708 is the travel distance of the elevator in mm per rotation,
         self.gripheight=.1
         self.jointLims = [
@@ -24,7 +25,7 @@ class ArmKinematics:
             # Link 2 to Link 3
             [np.pi/2-self.jointOffset , 0, self.L2, 0],
             # Link 3 to EE
-            [0, 0, self.L3, 0]
+            [self.jointOffset2, 0, self.L3, 0]
         ]
 
         
@@ -88,7 +89,7 @@ class ArmKinematics:
         beta[0]=np.arctan2(cbeta,dbeta)
         beta[1]=np.arctan2(-cbeta,dbeta)
 
-        dgamma = xprime/np.hypot(xprime,yprime)
+        dgamma = -yprime/np.hypot(xprime,yprime)
         cgamma = np.sqrt(1-dgamma**2)
         gamma=np.zeros(2)
         gamma[0]=np.arctan2(cgamma,dgamma)
@@ -110,7 +111,7 @@ class ArmKinematics:
             
                 for k in range(2):
 
-                    joint3=alpha-joint1[i]-joint2[k]
+                    joint3=alpha-joint1[i]-joint2[k]-self.jointOffset2
                     joints = np.array([joint1[i],joint2[k],joint3,0])
                     valid = True
                     for l in range(3):
@@ -126,7 +127,7 @@ class ArmKinematics:
                         print("fkpos: ",fkpos[0,3],fkpos[1,3])
                         print("Error", np.hypot(fkpos[0,3]-x, fkpos[1,3]-y))
                         print((np.hypot(fkpos[0,3]-x, fkpos[1,3]-y)<tolerance))
-                    if valid and (np.hypot(fkpos[0,3]-x, fkpos[1,3]-y)<tolerance):
+                    if (np.hypot(fkpos[0,3]-x, fkpos[1,3]-y)<tolerance):
                         validAnswer=True
                         validJoints=joints
                         break
@@ -245,7 +246,7 @@ if __name__ == "__main__":
     # print("VK: ",arm.vk([0,0,0]))
     t = arm.fk([0,0,0])
     print(t)
-    t = arm.calc_elevator_joint(0.05)
+    t = arm.ik(0.1941796, -0.0154,0,debug=True)
     print(t)
 
     # print(np.pi/6)

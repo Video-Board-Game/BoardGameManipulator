@@ -406,8 +406,11 @@ class DynamixelArm:
         """
         Reads the current position of the gripper."
         """
-        pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.gripper_ids)[0]
-        return pos_dxl/DXL_POSITION_FACTOR  # Convert from Dynamixel units to radians
+        pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.gripper_ids)
+        if pos_dxl is None or len(pos_dxl) == 0:
+            print("Failed to read gripper position. No data received.")
+            return None
+        return pos_dxl[0]/DXL_POSITION_FACTOR  # Convert from Dynamixel units to radians
     
     def read_gripper_goal_position(self):
         """
