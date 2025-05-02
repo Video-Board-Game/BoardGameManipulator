@@ -201,9 +201,10 @@ class ArmManipulatorNode(Node):
             self.get_logger().info(f"Arm is in position for setpoint: {self.current_setpoint}")
             self.current_setpoint=None
             
-if __name__ == '__main__':
-    rclpy.init()
+def main(args=None):
+    rclpy.init(args=args)
     node = ArmManipulatorNode()
+    '''
     # node.arm.write_gripper(0*np.pi+0*Grasps.OPEN.value)  # Open the gripper at the start
     joints = node.arm.read_arm_position()  # Read the current joint positions
     print(f"Current joint positions: {joints}")
@@ -220,9 +221,8 @@ if __name__ == '__main__':
     armcommand.grasp_type = "HALF"  # Set the desired grasp type
     node.receive_arm_command(armcommand)  # Simulate receiving a command to move the arm
     # armcommand.grasp_type = Grasps.OPEN.value  # Open the gripper at the start
-    
     node.arm.set_arm_torque(False)  # Enable gripper torque
-    
+    '''
    
     
     try:
@@ -236,3 +236,6 @@ if __name__ == '__main__':
     # finally:
     #     node.destroy_node()
     #     rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
