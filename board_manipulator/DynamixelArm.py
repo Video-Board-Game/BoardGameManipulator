@@ -111,10 +111,12 @@ GRIPPER_STOW = 800 # barely closed for transport, but without risk of overheatin
 GRIPPER_CLOSE = 2648
 ELEVATOR_ZERO_POSITION = 3915
 
-ARM_PROFILE_VELOCITY = 1*np.pi # radians/sec, this is the desired velocity for the arm joints
-ARM_PROFILE_ACCELERATION = 1*np.pi # radians/sec^2, this is the desired acceleration for the arm joints
-GRIPPER_OPEN_PROFILE_VELOCITY = 1*np.pi # radians/sec, this is the desired velocity for the gripper
-GRIPPER_OPEN_PROFILE_ACCELERATION = np.pi # radians/sec^2, this is the desired acceleration for the gripper
+ARM_PROFILE_VELOCITY = 0.5*np.pi # radians/sec, this is the desired velocity for the arm joints
+ARM_PROFILE_ACCELERATION = 0.5*np.pi # radians/sec^2, this is the desired acceleration for the arm joints
+ELEVATER_PROFILE_VELOCITY = 5*np.pi # radians/sec, this is the desired velocity for the elevator
+ELEVATER_PROFILE_ACCELERATION = 5*np.pi # radians/sec^2, this is the desired acceleration for the elevator
+GRIPPER_OPEN_PROFILE_VELOCITY = 4*np.pi # radians/sec, this is the desired velocity for the gripper
+GRIPPER_OPEN_PROFILE_ACCELERATION = 4*np.pi # radians/sec^2, this is the desired acceleration for the gripper
 
 
 class DynamixelArm:
@@ -199,7 +201,7 @@ class DynamixelArm:
         self.write_arm_profile(velocity=ARM_PROFILE_VELOCITY, acceleration=ARM_PROFILE_ACCELERATION) # Set profile velocity and acceleration for arm motors, in radians/sec and radians/sec^2 respectively
 
         # Sets the profile velocity and acceleration for the elevator
-        self.write_elevator_profile(velocity=ARM_PROFILE_VELOCITY, acceleration=ARM_PROFILE_ACCELERATION) # Set profile velocity and acceleration for elevator, in radians/sec and radians/sec^2 respectively
+        self.write_elevator_profile(velocity=ELEVATER_PROFILE_VELOCITY, acceleration=ELEVATER_PROFILE_ACCELERATION) # Set profile velocity and acceleration for elevator, in radians/sec and radians/sec^2 respectively
         
         # Sets the profile velocity and acceleration for the gripper
         self.write_gripper_profile(velocity=GRIPPER_OPEN_PROFILE_VELOCITY, acceleration=GRIPPER_OPEN_PROFILE_ACCELERATION) # Set profile velocity and acceleration for gripper, in radians/sec and radians/sec^2 respectively
@@ -358,6 +360,10 @@ class DynamixelArm:
         Reads the current position of the elevator.
         """
         pos_dxl = self.bulk_read(ADDR_MX_PRESENT_POSITION, LEN_MX_PRESENT_POSITION, self.elevator_ids)[0]
+        # Convert uint64 to its 2's complement representation
+        if pos_dxl >= (1 << 31):  # Check if the most significant bit is set
+            pos_dxl -= (1 << 32)  # Subtract 2^64 to get the negative value
+        # print(pos_dxl)
         pos = (pos_dxl - ELEVATOR_ZERO_POSITION) / DXL_POSITION_FACTOR
         return pos
 
@@ -492,7 +498,7 @@ class DynamixelArm:
 if __name__ == "__main__":
     
     arm = DynamixelArm()
-    # print(arm.read_arm_position())
+    print(arm.read_elevator_position())
     # arm.write_arm_joints([0, 0, 0])
     arm.set_arm_torque(False)
     arm.set_gripper_torque(False)
